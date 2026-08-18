@@ -1,0 +1,39 @@
+{
+	"name": "forge-language-pack-zh-hans",
+	"displayName": "%displayName%",
+	"description": "%description%",
+	"version": "1.134.0",
+	"publisher": "forge",
+	"license": "MIT",
+	"engines": {
+		"vscode": "*"
+	},
+	"categories": [
+		"Language Packs"
+	],
+	"keywords": [
+		"chinese",
+		"zh-cn",
+		"localization"
+	],
+	"files": [
+		"translations",
+		"package.nls.json",
+		"package.nls.zh-cn.json"
+	],
+	"contributes": {
+		"localizations": [
+			{
+				"languageId": "zh-cn",
+				"languageName": "Chinese Simplified",
+				"localizedLanguageName": "中文(简体)",
+				"translations": [
+					{
+						"id": "vscode",
+						"path": "./translations/main.i18n.json"
+					}
+				]
+			}
+		]
+	}
+}
