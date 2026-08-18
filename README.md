@@ -2,9 +2,22 @@
 
 [English](#english) · [中文](#zhongwen) · [日本語](#ribenyu) · [한국어](#hanguoyu) · [Русский](#eyu) · [Français](#fayu) · [Deutsch](#deyu) · [Español](#xibanyayu)
 
+[License](#license)
+
 ---
 
 <h2 id="english">English</h2>
+
+### License
+
+This tree is not MIT-only.
+
+- **Forge** original work and **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). The Microsoft copyright notice in that file is kept on purpose.
+- **[Codex](https://github.com/openai/codex)** under `codex/`: [Apache-2.0](codex/LICENSE), plus [NOTICE](codex/NOTICE).
+- Live edit preview animation: portions adapted from **[Cline](https://github.com/cline/cline)**, Apache-2.0 (full text in [ThirdPartyNotices.txt](ThirdPartyNotices.txt)).
+- Other bundled components: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Code - OSS MIT is not the Visual Studio Code product license and does not grant Microsoft trademarks.
 
 Forge is a standalone desktop IDE based on [Code - OSS](https://github.com/microsoft/vscode). It embeds the official [Codex](https://github.com/openai/codex) runtime as a native agent. It is not a VS Code extension and it does not replace the editor with a chat-only shell. The editor stays the main pane; Codex lives in a separately resizable side pane.
 
@@ -145,13 +158,20 @@ Workbench chat / editor / terminal
 
 Streaming patches use `item/fileChange/patchUpdated`. `write_file` snapshots the file before disk write, then uses the same Live Edit preview. Hidden chain-of-thought is not reconstructed; the UI only renders public summaries and status from app-server.
 
-### License
-
-MIT ([LICENSE.txt](LICENSE.txt)). The tree is based on Microsoft Code - OSS and includes OpenAI Codex runtime. Also see `ThirdPartyNotices.txt`.
-
 ---
 
 <h2 id="zhongwen">中文</h2>
+
+### 许可证
+
+本仓库不是「整份只有 MIT」。
+
+- **Forge** 自有代码和 **[Code - OSS](https://github.com/microsoft/vscode)**：[MIT](LICENSE.txt)。根目录文件里的 Microsoft 版权声明会保留。
+- `codex/` 里的 **[Codex](https://github.com/openai/codex)** 运行时：[Apache-2.0](codex/LICENSE)，以及 [NOTICE](codex/NOTICE)。
+- 实时改文件预览动画有一部分改编自 **[Cline](https://github.com/cline/cline)**，协议为 Apache-2.0（全文见 [ThirdPartyNotices.txt](ThirdPartyNotices.txt)）。
+- 其余第三方组件见 [ThirdPartyNotices.txt](ThirdPartyNotices.txt)。
+
+Code - OSS 的 MIT 不等于 Visual Studio Code 产品许可，也不包含微软商标。
 
 Forge 是基于 [Code - OSS](https://github.com/microsoft/vscode) 的独立桌面 IDE，把官方 [Codex](https://github.com/openai/codex) 作为原生 Agent 运行时嵌进工作台。它不是 VS Code 扩展，也不另开一套聊天壳：编辑器仍是主界面，Codex 在可独立缩放的侧栏里工作。
 
@@ -238,13 +258,20 @@ npm run gulp vscode-win32-x64-system-setup
 
 Codex 起不来时看：`%APPDATA%\.forge-ai\logs\<日期>\window1\exthost\agenthost\agenthost.log`
 
-### 许可证
-
-[MIT](LICENSE.txt)。主体来自 Microsoft Code - OSS，并包含 OpenAI Codex 运行时。另见 `ThirdPartyNotices.txt`。
-
 ---
 
 <h2 id="ribenyu">日本語</h2>
+
+### ライセンス
+
+このリポジトリは MIT だけの単一ライセンスではありません。
+
+- **Forge** 独自部分と **[Code - OSS](https://github.com/microsoft/vscode)**：[MIT](LICENSE.txt)。ファイル内の Microsoft 著作権表示は残します。
+- `codex/` の **[Codex](https://github.com/openai/codex)**：[Apache-2.0](codex/LICENSE) と [NOTICE](codex/NOTICE)。
+- ライブ編集プレビューの一部は **[Cline](https://github.com/cline/cline)** 由来（Apache-2.0）。全文は [ThirdPartyNotices.txt](ThirdPartyNotices.txt)。
+- その他の第三者通知：[ThirdPartyNotices.txt](ThirdPartyNotices.txt)。
+
+Code - OSS の MIT は Visual Studio Code 製品ライセンスではなく、Microsoft の商標許諾でもありません。
 
 Forge は [Code - OSS](https://github.com/microsoft/vscode) を土台にした独立デスクトップ IDE で、公式 [Codex](https://github.com/openai/codex) をネイティブ Agent として組み込みます。VS Code 拡張ではなく、チャット専用シェルでもありません。エディタが主画面のまま、Codex は独立してリサイズできるサイドペインで動きます。
 
@@ -277,13 +304,20 @@ scripts\code.bat
 
 ビルド要件：Windows 10/11 x64、Node.js **24.18.x**、Git。インストーラ作成は `npm run gulp vscode-win32-x64` など（English 節と同じコマンド）。
 
-### ライセンス
-
-[MIT](LICENSE.txt)。Code - OSS と Codex ランタイムを含みます。
-
 ---
 
 <h2 id="hanguoyu">한국어</h2>
+
+### 라이선스
+
+이 저장소는 MIT 하나만 있는 트리가 아닙니다.
+
+- **Forge** 자체 코드와 **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). 파일의 Microsoft 저작권 고지는 유지합니다.
+- `codex/`의 **[Codex](https://github.com/openai/codex)**: [Apache-2.0](codex/LICENSE) 및 [NOTICE](codex/NOTICE).
+- 라이브 편집 미리보기의 일부는 **[Cline](https://github.com/cline/cline)**에서 각색(Apache-2.0). 전문은 [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+- 기타 구성 요소: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Code - OSS MIT는 Visual Studio Code 제품 라이선스가 아니며 Microsoft 상표를 부여하지 않습니다.
 
 Forge는 [Code - OSS](https://github.com/microsoft/vscode) 기반의 독립 데스크톱 IDE이며, 공식 [Codex](https://github.com/openai/codex)를 네이티브 Agent로 내장합니다. VS Code 확장도 아니고, 채팅 전용 셸도 아닙니다. 편집기가 메인 창이고 Codex는 따로 크기를 조절할 수 있는 사이드 패널에서 동작합니다.
 
@@ -313,13 +347,20 @@ scripts\code.bat
 
 요구 사항: Windows 10/11 x64, Node.js **24.18.x**, Git. 설치 패키지 명령은 English 절과 같습니다.
 
-### 라이선스
-
-[MIT](LICENSE.txt).
-
 ---
 
 <h2 id="eyu">Русский</h2>
+
+### Лицензия
+
+Репозиторий не является деревом только с MIT.
+
+- Собственный код **Forge** и **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Уведомление об авторских правах Microsoft в этом файле сохраняется.
+- **[Codex](https://github.com/openai/codex)** в `codex/`: [Apache-2.0](codex/LICENSE) и [NOTICE](codex/NOTICE).
+- Часть анимации предпросмотра правок адаптирована из **[Cline](https://github.com/cline/cline)** (Apache-2.0); полный текст в [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+- Прочие компоненты: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+MIT у Code - OSS — это не лицензия продукта Visual Studio Code и не разрешение на товарные знаки Microsoft.
 
 Forge — отдельная настольная IDE на базе [Code - OSS](https://github.com/microsoft/vscode) со встроенным официальным [Codex](https://github.com/openai/codex) как нативным агентом. Это не расширение VS Code и не отдельная чат-оболочка: редактор остаётся главным окном, Codex — в независимо масштабируемой боковой панели.
 
@@ -349,13 +390,20 @@ scripts\code.bat
 
 Нужны Windows 10/11 x64, Node.js **24.18.x**, Git. Команды сборки установщика — в разделе English.
 
-### Лицензия
-
-[MIT](LICENSE.txt).
-
 ---
 
 <h2 id="fayu">Français</h2>
+
+### Licence
+
+Ce dépôt n’est pas un arbre uniquement MIT.
+
+- Code original **Forge** et **[Code - OSS](https://github.com/microsoft/vscode)** : [MIT](LICENSE.txt). L’avis de copyright Microsoft dans ce fichier est conservé.
+- **[Codex](https://github.com/openai/codex)** sous `codex/` : [Apache-2.0](codex/LICENSE) et [NOTICE](codex/NOTICE).
+- Portions de l’animation d’aperçu d’édition adaptées de **[Cline](https://github.com/cline/cline)** (Apache-2.0) ; texte intégral dans [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+- Autres composants : [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Le MIT de Code - OSS n’est pas la licence produit de Visual Studio Code et n’accorde pas les marques Microsoft.
 
 Forge est un IDE de bureau autonome basé sur [Code - OSS](https://github.com/microsoft/vscode), avec le runtime officiel [Codex](https://github.com/openai/codex) intégré comme agent natif. Ce n’est ni une extension VS Code, ni une coquille « chat only » : l’éditeur reste la vue principale, Codex occupe un panneau latéral redimensionnable.
 
@@ -385,13 +433,20 @@ scripts\code.bat
 
 Prérequis : Windows 10/11 x64, Node.js **24.18.x**, Git. Commandes d’installeur : voir English.
 
-### Licence
-
-[MIT](LICENSE.txt).
-
 ---
 
 <h2 id="deyu">Deutsch</h2>
+
+### Lizenz
+
+Dieser Baum ist nicht ausschließlich MIT.
+
+- Eigenanteil von **Forge** und **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Der Microsoft-Copyright-Hinweis in dieser Datei bleibt erhalten.
+- **[Codex](https://github.com/openai/codex)** unter `codex/`: [Apache-2.0](codex/LICENSE) und [NOTICE](codex/NOTICE).
+- Teile der Live-Edit-Vorschau stammen aus **[Cline](https://github.com/cline/cline)** (Apache-2.0); voller Text in [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+- Weitere Komponenten: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Das MIT von Code - OSS ist nicht die Visual-Studio-Code-Produktlizenz und gewährt keine Microsoft-Markenrechte.
 
 Forge ist eine eigenständige Desktop-IDE auf Basis von [Code - OSS](https://github.com/microsoft/vscode) mit offiziellem [Codex](https://github.com/openai/codex) als nativem Agent. Es ist keine VS-Code-Erweiterung und keine reine Chat-Oberfläche. Der Editor bleibt die Hauptansicht, Codex sitzt in einer unabhängig skalierbaren Seitenleiste.
 
@@ -421,13 +476,20 @@ scripts\code.bat
 
 Voraussetzungen: Windows 10/11 x64, Node.js **24.18.x**, Git. Installer-Befehle stehen im Abschnitt English.
 
-### Lizenz
-
-[MIT](LICENSE.txt).
-
 ---
 
 <h2 id="xibanyayu">Español</h2>
+
+### Licencia
+
+Este árbol no es solo MIT.
+
+- Código original de **Forge** y **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Se conserva el aviso de copyright de Microsoft de ese archivo.
+- **[Codex](https://github.com/openai/codex)** en `codex/`: [Apache-2.0](codex/LICENSE) y [NOTICE](codex/NOTICE).
+- Parte de la animación de vista previa de edición está adaptada de **[Cline](https://github.com/cline/cline)** (Apache-2.0); texto completo en [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+- Otros componentes: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+El MIT de Code - OSS no es la licencia de producto de Visual Studio Code ni concede marcas de Microsoft.
 
 Forge es un IDE de escritorio independiente basado en [Code - OSS](https://github.com/microsoft/vscode), con el [Codex](https://github.com/openai/codex) oficial integrado como agente nativo. No es una extensión de VS Code ni un visor solo de chat: el editor sigue siendo el panel principal y Codex vive en un panel lateral de tamaño independiente.
 
@@ -456,7 +518,3 @@ scripts\code.bat
 ```
 
 Requisitos: Windows 10/11 x64, Node.js **24.18.x**, Git. Comandos del instalador: sección English.
-
-### Licencia
-
-[MIT](LICENSE.txt).
