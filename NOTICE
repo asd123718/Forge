@@ -1,0 +1,11 @@
+Forge AI IDE
+
+This source tree contains original Forge work licensed under the Apache License, Version 2.0, together with third-party material under its respective licenses.
+
+Forge is based on Code - OSS. Code - OSS material remains licensed under the MIT License; see LICENSE.txt and the copyright notices retained in the source tree.
+
+The upstream Codex runtime under codex/ is licensed under Apache-2.0 and carries its own NOTICE; see codex/LICENSE and codex/NOTICE.
+
+Portions of the live edit preview are adapted from Cline under Apache-2.0. Additional third-party notices and license texts are collected in ThirdPartyNotices.txt.
+
+See LICENSING.md for the licensing scope of this repository.
