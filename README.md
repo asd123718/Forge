@@ -2,7 +2,7 @@
 
 [English](#english) · [中文](#zhongwen) · [日本語](#ribenyu) · [한국어](#hanguoyu) · [Русский](#eyu) · [Français](#fayu) · [Deutsch](#deyu) · [Español](#xibanyayu)
 
-[License](#license)
+[Licensing details](LICENSING.md)
 
 ---
 
@@ -10,12 +10,15 @@
 
 ### License
 
-This tree is not MIT-only.
+This is a mixed-license source tree.
 
-- **Forge** original work and **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). The Microsoft copyright notice in that file is kept on purpose.
+- **Forge original work**: [Apache-2.0](LICENSE).
+- **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). The Microsoft copyright notice in that file is kept on purpose.
 - **[Codex](https://github.com/openai/codex)** under `codex/`: [Apache-2.0](codex/LICENSE), plus [NOTICE](codex/NOTICE).
 - Live edit preview animation: portions adapted from **[Cline](https://github.com/cline/cline)**, Apache-2.0 (full text in [ThirdPartyNotices.txt](ThirdPartyNotices.txt)).
 - Other bundled components: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+See [LICENSING.md](LICENSING.md) for the exact scope of each license. The root Apache-2.0 license does not replace third-party notices or licenses.
 
 Code - OSS MIT is not the Visual Studio Code product license and does not grant Microsoft trademarks.
 
@@ -164,12 +167,15 @@ Streaming patches use `item/fileChange/patchUpdated`. `write_file` snapshots the
 
 ### 许可证
 
-本仓库不是「整份只有 MIT」。
+本仓库是一个混合许可证源码树。
 
-- **Forge** 自有代码和 **[Code - OSS](https://github.com/microsoft/vscode)**：[MIT](LICENSE.txt)。根目录文件里的 Microsoft 版权声明会保留。
+- **Forge 自有代码**：[Apache-2.0](LICENSE)。
+- **[Code - OSS](https://github.com/microsoft/vscode)**：[MIT](LICENSE.txt)。根目录文件里的 Microsoft 版权声明会保留。
 - `codex/` 里的 **[Codex](https://github.com/openai/codex)** 运行时：[Apache-2.0](codex/LICENSE)，以及 [NOTICE](codex/NOTICE)。
 - 实时改文件预览动画有一部分改编自 **[Cline](https://github.com/cline/cline)**，协议为 Apache-2.0（全文见 [ThirdPartyNotices.txt](ThirdPartyNotices.txt)）。
 - 其余第三方组件见 [ThirdPartyNotices.txt](ThirdPartyNotices.txt)。
+
+各许可证的准确适用范围见 [LICENSING.md](LICENSING.md)。根目录 Apache-2.0 不会覆盖或移除第三方版权、署名和许可证声明。
 
 Code - OSS 的 MIT 不等于 Visual Studio Code 产品许可，也不包含微软商标。
 
@@ -264,12 +270,15 @@ Codex 起不来时看：`%APPDATA%\.forge-ai\logs\<日期>\window1\exthost\agent
 
 ### ライセンス
 
-このリポジトリは MIT だけの単一ライセンスではありません。
+このリポジトリは複数ライセンスのソースツリーです。
 
-- **Forge** 独自部分と **[Code - OSS](https://github.com/microsoft/vscode)**：[MIT](LICENSE.txt)。ファイル内の Microsoft 著作権表示は残します。
+- **Forge 独自部分**：[Apache-2.0](LICENSE)。
+- **[Code - OSS](https://github.com/microsoft/vscode)**：[MIT](LICENSE.txt)。ファイル内の Microsoft 著作権表示は残します。
 - `codex/` の **[Codex](https://github.com/openai/codex)**：[Apache-2.0](codex/LICENSE) と [NOTICE](codex/NOTICE)。
 - ライブ編集プレビューの一部は **[Cline](https://github.com/cline/cline)** 由来（Apache-2.0）。全文は [ThirdPartyNotices.txt](ThirdPartyNotices.txt)。
 - その他の第三者通知：[ThirdPartyNotices.txt](ThirdPartyNotices.txt)。
+
+各ライセンスの適用範囲は [LICENSING.md](LICENSING.md) を参照してください。ルートの Apache-2.0 は第三者の著作権表示やライセンスを置き換えません。
 
 Code - OSS の MIT は Visual Studio Code 製品ライセンスではなく、Microsoft の商標許諾でもありません。
 
@@ -310,12 +319,15 @@ scripts\code.bat
 
 ### 라이선스
 
-이 저장소는 MIT 하나만 있는 트리가 아닙니다.
+이 저장소는 여러 라이선스가 함께 적용되는 소스 트리입니다.
 
-- **Forge** 자체 코드와 **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). 파일의 Microsoft 저작권 고지는 유지합니다.
+- **Forge 자체 코드**: [Apache-2.0](LICENSE).
+- **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). 파일의 Microsoft 저작권 고지는 유지합니다.
 - `codex/`의 **[Codex](https://github.com/openai/codex)**: [Apache-2.0](codex/LICENSE) 및 [NOTICE](codex/NOTICE).
 - 라이브 편집 미리보기의 일부는 **[Cline](https://github.com/cline/cline)**에서 각색(Apache-2.0). 전문은 [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
 - 기타 구성 요소: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+각 라이선스의 정확한 적용 범위는 [LICENSING.md](LICENSING.md)를 참고하세요. 루트 Apache-2.0은 제3자 저작권, 고지 또는 라이선스를 대체하지 않습니다.
 
 Code - OSS MIT는 Visual Studio Code 제품 라이선스가 아니며 Microsoft 상표를 부여하지 않습니다.
 
@@ -353,12 +365,15 @@ scripts\code.bat
 
 ### Лицензия
 
-Репозиторий не является деревом только с MIT.
+В репозитории используется несколько лицензий.
 
-- Собственный код **Forge** и **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Уведомление об авторских правах Microsoft в этом файле сохраняется.
+- Собственный код **Forge**: [Apache-2.0](LICENSE).
+- **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Уведомление об авторских правах Microsoft в этом файле сохраняется.
 - **[Codex](https://github.com/openai/codex)** в `codex/`: [Apache-2.0](codex/LICENSE) и [NOTICE](codex/NOTICE).
 - Часть анимации предпросмотра правок адаптирована из **[Cline](https://github.com/cline/cline)** (Apache-2.0); полный текст в [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
 - Прочие компоненты: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Точная область действия каждой лицензии описана в [LICENSING.md](LICENSING.md). Корневая Apache-2.0 не заменяет лицензии и уведомления третьих лиц.
 
 MIT у Code - OSS — это не лицензия продукта Visual Studio Code и не разрешение на товарные знаки Microsoft.
 
@@ -396,12 +411,15 @@ scripts\code.bat
 
 ### Licence
 
-Ce dépôt n’est pas un arbre uniquement MIT.
+Ce dépôt contient plusieurs licences.
 
-- Code original **Forge** et **[Code - OSS](https://github.com/microsoft/vscode)** : [MIT](LICENSE.txt). L’avis de copyright Microsoft dans ce fichier est conservé.
+- Code original **Forge** : [Apache-2.0](LICENSE).
+- **[Code - OSS](https://github.com/microsoft/vscode)** : [MIT](LICENSE.txt). L’avis de copyright Microsoft dans ce fichier est conservé.
 - **[Codex](https://github.com/openai/codex)** sous `codex/` : [Apache-2.0](codex/LICENSE) et [NOTICE](codex/NOTICE).
 - Portions de l’animation d’aperçu d’édition adaptées de **[Cline](https://github.com/cline/cline)** (Apache-2.0) ; texte intégral dans [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
 - Autres composants : [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Voir [LICENSING.md](LICENSING.md) pour le périmètre exact de chaque licence. La licence Apache-2.0 à la racine ne remplace pas les licences ou avis de tiers.
 
 Le MIT de Code - OSS n’est pas la licence produit de Visual Studio Code et n’accorde pas les marques Microsoft.
 
@@ -439,12 +457,15 @@ Prérequis : Windows 10/11 x64, Node.js **24.18.x**, Git. Commandes d’installe
 
 ### Lizenz
 
-Dieser Baum ist nicht ausschließlich MIT.
+Dieser Quellbaum enthält mehrere Lizenzen.
 
-- Eigenanteil von **Forge** und **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Der Microsoft-Copyright-Hinweis in dieser Datei bleibt erhalten.
+- Eigenanteil von **Forge**: [Apache-2.0](LICENSE).
+- **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Der Microsoft-Copyright-Hinweis in dieser Datei bleibt erhalten.
 - **[Codex](https://github.com/openai/codex)** unter `codex/`: [Apache-2.0](codex/LICENSE) und [NOTICE](codex/NOTICE).
 - Teile der Live-Edit-Vorschau stammen aus **[Cline](https://github.com/cline/cline)** (Apache-2.0); voller Text in [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
 - Weitere Komponenten: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Der genaue Geltungsbereich jeder Lizenz steht in [LICENSING.md](LICENSING.md). Apache-2.0 im Stammverzeichnis ersetzt keine Lizenzen oder Hinweise Dritter.
 
 Das MIT von Code - OSS ist nicht die Visual-Studio-Code-Produktlizenz und gewährt keine Microsoft-Markenrechte.
 
@@ -482,12 +503,15 @@ Voraussetzungen: Windows 10/11 x64, Node.js **24.18.x**, Git. Installer-Befehle 
 
 ### Licencia
 
-Este árbol no es solo MIT.
+Este repositorio contiene varias licencias.
 
-- Código original de **Forge** y **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Se conserva el aviso de copyright de Microsoft de ese archivo.
+- Código original de **Forge**: [Apache-2.0](LICENSE).
+- **[Code - OSS](https://github.com/microsoft/vscode)**: [MIT](LICENSE.txt). Se conserva el aviso de copyright de Microsoft de ese archivo.
 - **[Codex](https://github.com/openai/codex)** en `codex/`: [Apache-2.0](codex/LICENSE) y [NOTICE](codex/NOTICE).
 - Parte de la animación de vista previa de edición está adaptada de **[Cline](https://github.com/cline/cline)** (Apache-2.0); texto completo en [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
 - Otros componentes: [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+
+Consulta [LICENSING.md](LICENSING.md) para ver el alcance exacto de cada licencia. Apache-2.0 en la raíz no sustituye las licencias ni los avisos de terceros.
 
 El MIT de Code - OSS no es la licencia de producto de Visual Studio Code ni concede marcas de Microsoft.
 
