@@ -16,6 +16,8 @@ export interface IChatResponseFileEdit extends IEditSessionEntryDiff {
 	readonly isOutsideWorkspace: boolean;
 	/** Whether the Agent Host tool that produced this snapshot has completed. */
 	readonly isEditComplete?: boolean;
+	/** Tool-call or worker identity used to pin Dialectic live-edit panes. */
+	readonly sourceId?: string;
 }
 
 /**

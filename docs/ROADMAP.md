@@ -18,16 +18,17 @@
 - [x] Preserve final disk snapshots and the existing checkpoint/changeset
   Accept, Reject, and Revert pipeline.
 - [ ] Complete packaged-product signing, installer assets, update feed, and a
-  clean-machine smoke test.
+  clean-machine smoke test. Unsigned nightly steps and a clean-Windows checklist
+  are in `docs/NIGHTLY.md`; signing and an update feed remain open.
 
 ## M2 — file-operation completeness
 
-- [ ] Give create/delete/rename/move first-class streaming preview identities;
+- [x] Give create/delete/rename/move first-class streaming preview identities;
   the current final checkpoint is authoritative, while move previews use the
-  source path until completion.
-- [ ] Automatically focus the first active file in native Multi Diff without
+  destination path during streaming.
+- [x] Automatically focus the first active file in native Multi Diff without
   stealing focus repeatedly on later deltas.
-- [ ] Add conflict UX for user edits that overlap a streaming agent patch.
+- [x] Add conflict UX for user edits that overlap a streaming agent patch.
 - [ ] Add multi-root and worktree-isolation integration tests.
 
 ## M3 — IDE-native tool surfaces
@@ -52,10 +53,18 @@
 ## M5 — sustainable distribution
 
 - [ ] CI matrix for Windows, macOS, and Linux builds of both upstreams.
-- [ ] Protocol-generation drift check against the pinned Codex package.
+- [x] Protocol-generation drift check against the pinned Codex package.
 - [ ] Automated upstream merge rehearsal and focused bridge test suite.
 - [ ] Release channel, crash reporting policy, privacy documentation, licenses,
   and reproducible installer builds.
+
+## M6 — multi-agent orchestration
+
+- [x] Host-owned Leader/Worker scheduler on top of Agent Host, not a second chat.
+- [x] DeepSeek Harness and Grok Build worker adapters, Codex Leader adapter.
+- [x] Compact orchestration UI inside the native Codex chat.
+- [ ] Broader FileEdit ingest for worker patches (today they land on disk + SCM).
+- [ ] Additional Leader/Worker providers beyond the first adapters.
 
 Features are promoted only after exercising the real app-server event; Forge
 does not fabricate reasoning, tool progress, permission state, or success.

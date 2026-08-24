@@ -7,7 +7,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 44px;
+	width: 80px;
 	padding: 0 4px;
 }
 
@@ -28,6 +28,11 @@
 	margin-left: -5px;
 	background: var(--vscode-button-background);
 	color: var(--vscode-button-foreground);
+}
+
+.forge-account-toolbar-item .forge-account-avatar.grok,
+.forge-account-toolbar-item .forge-account-avatar.deepseek {
+	margin-left: -5px;
 }
 
 .forge-account-page {
@@ -157,4 +162,49 @@
 .forge-account-note {
 	margin-top: 24px;
 	line-height: 1.5;
+}
+
+.forge-account-api-form {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.forge-account-api-input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: var(--vscode-cornerRadius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+}
+
+.forge-account-api-form .monaco-button {
+	width: auto;
+	align-self: flex-start;
+	min-width: 112px;
+}
+
+.forge-account-code {
+	margin-top: 8px;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 16px;
+	letter-spacing: 0.08em;
+}
+
+.forge-account-auth-url {
+	display: block;
+	width: 100%;
+	margin-top: 8px;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-contrastBorder, transparent));
+	border-radius: var(--vscode-cornerRadius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
 }

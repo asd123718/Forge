@@ -1,0 +1,51 @@
+name: Forge fast
+
+on:
+  push:
+    branches: [main, publish]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  forge-fast:
+    name: Forge Windows fast lane
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Check upstream seams and protocol pin
+        shell: pwsh
+        run: ./scripts/forge/check-upstreams.ps1
+
+      - name: Verify Forge delta inventory
+        shell: pwsh
+        run: ./scripts/forge/list-delta.ps1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check generated protocol
+        run: npm run codex:check-protocol
+
+      - name: Compile client
+        run: npm run compile-client
+
+      - name: Codex observer tests
+        run: npm run test-node -- --run src/vs/platform/agentHost/test/node/codexFileEditObserver.test.ts
+
+      - name: Codex mapper tests
+        run: npm run test-node -- --runGlob "vs/platform/agentHost/test/node/codex/**/*.test.js"
+
+      - name: File edit tracker tests
+        run: npm run test-node -- --run src/vs/platform/agentHost/test/node/fileEditTracker.test.ts
+
+      - name: Smoke official Codex app-server
+        run: node scripts/forge/smoke-app-server.mjs

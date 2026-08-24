@@ -18,8 +18,10 @@ export type CodexModelWireApi = 'responses';
 export type CodexModelProviderKind = 'responses' | 'ollama' | 'lmstudio';
 export type CodexModelProviderAuthMode = 'none' | 'environment' | 'stored';
 export type CodexModelCatalogGroup = 'cloud' | 'local';
+export type CodexOfficialModelSource = 'codex' | 'grok' | 'deepseek';
 
 export const FORGE_MODELS_FILE_NAME = 'forge-models.json';
+export const CODEX_MODELS_ROOT_CONFIG_KEY = 'codex.models';
 
 /** A saved model name belonging to one provider tab. */
 export interface ICodexSavedModel {
@@ -51,6 +53,12 @@ export interface ICodexModelProviderEntry {
 	readonly models: readonly ICodexSavedModel[];
 	/** Currently edited model name; restored when switching tabs. */
 	readonly selectedModel: string;
+	/** Login-managed vendor card. Manual cards never set this. */
+	readonly official?: boolean;
+	/** Which signed-in agent owns this official card. */
+	readonly officialSource?: CodexOfficialModelSource;
+	/** Vendor-catalog names that cannot be deleted while signed in. */
+	readonly officialModels?: readonly string[];
 }
 
 /** Default model + provider plus custom providers configured for Codex. */
@@ -149,11 +157,23 @@ const STORED_API_KEY_ENV_PREFIX = 'FORGE_CODEX_PROVIDER_';
 const STORED_API_KEY_ENV_SUFFIX = '_API_KEY';
 
 export function getCodexModelCatalogEntry(catalogId: string): ICodexModelCatalogEntry {
-	return CODEX_MODEL_CATALOG.find(entry => entry.id === catalogId) ?? CODEX_MODEL_CATALOG[0];
+	return CODEX_MODEL_CATALOG.find(entry => entry.id === catalogId)
+		?? CODEX_MODEL_CATALOG.find(entry => entry.id === 'openai')
+		?? CODEX_MODEL_CATALOG[0];
+}
+
+/** Providers shown in the model-card picker, sorted by display name. */
+export function listCodexModelCatalog(): readonly ICodexModelCatalogEntry[] {
+	return [...CODEX_MODEL_CATALOG].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base', numeric: true }));
 }
 
 export function isOllamaCatalog(catalogId: string): boolean {
 	return catalogId === 'ollama';
+}
+
+/** Only Ollama can list installed models; other local servers require a typed name. */
+export function discoversCodexLocalModels(catalogId: string): boolean {
+	return isOllamaCatalog(catalogId);
 }
 
 export function isLocalCatalog(catalogId: string): boolean {
@@ -180,10 +200,24 @@ export function enabledCodexPickerModels(config: ICodexModelsConfig): readonly {
 			.map(model => ({ providerId: provider.id, name: model.name })));
 }
 
+function isRoutableCodexProvider(provider: ICodexModelProviderEntry): boolean {
+	if (!provider.enabled || provider.id === '') {
+		return false;
+	}
+	// Official cards with empty URL stay on the vendor subscription until BYOK is filled.
+	if (provider.official && provider.baseUrl.trim() === '') {
+		return false;
+	}
+	return true;
+}
+
 export function withDefaultCodexRouting(config: ICodexModelsConfig): ICodexModelsConfig {
-	const enabled = enabledCodexPickerModels(config);
-	const selected = config.providers.find(provider => provider.id === config.activeProviderId)
-		?? config.providers.find(provider => provider.enabled);
+	const enabled = enabledCodexPickerModels(config).filter(model => {
+		const provider = config.providers.find(candidate => candidate.id === model.providerId);
+		return !!provider && isRoutableCodexProvider(provider);
+	});
+	const selected = config.providers.find(provider => provider.id === config.activeProviderId && isRoutableCodexProvider(provider))
+		?? config.providers.find(provider => isRoutableCodexProvider(provider));
 	const selectedModel = selected?.models.find(model => model.enabled && model.name === selected.selectedModel)
 		?? selected?.models.find(model => model.enabled);
 	const fallback = enabled[0];
@@ -230,6 +264,24 @@ export function defaultCodexModelProviderEntry(catalogId = 'openai'): ICodexMode
 
 export function emptyCodexModelsConfig(): ICodexModelsConfig {
 	return { model: '', modelProvider: '', providers: [] };
+}
+
+export function isEmptyCodexModelsConfig(value: unknown): boolean {
+	const config = normalizeCodexModelsConfig(value);
+	return config.model === '' && config.modelProvider === '' && config.providers.length === 0;
+}
+
+export function preferCodexModelsConfig(...candidates: readonly unknown[]): ICodexModelsConfig | undefined {
+	for (const candidate of candidates) {
+		if (candidate === undefined) {
+			continue;
+		}
+		const config = normalizeCodexModelsConfig(candidate);
+		if (!isEmptyCodexModelsConfig(config)) {
+			return config;
+		}
+	}
+	return undefined;
 }
 
 function inferCatalogId(id: string, kind: CodexModelProviderKind): string {
@@ -299,6 +351,13 @@ function normalizeProvider(raw: unknown): ICodexModelProviderEntry | undefined {
 		: inferCatalogId(entry.id.trim(), kind);
 	const catalog = getCodexModelCatalogEntry(catalogId);
 	const selectedModel = typeof entry.selectedModel === 'string' ? entry.selectedModel.trim() : '';
+	const official = entry.official === true;
+	const officialSource: CodexOfficialModelSource | undefined = entry.officialSource === 'codex' || entry.officialSource === 'grok' || entry.officialSource === 'deepseek'
+		? entry.officialSource
+		: undefined;
+	const officialModels = Array.isArray(entry.officialModels)
+		? uniqueNonEmptyStrings(entry.officialModels)
+		: [];
 	return {
 		id: entry.id.trim(),
 		catalogId: catalog.id,
@@ -311,7 +370,29 @@ function normalizeProvider(raw: unknown): ICodexModelProviderEntry | undefined {
 		enabled: entry.enabled !== false,
 		models: normalizeSavedModels(entry.models, selectedModel),
 		selectedModel,
+		...(official ? {
+			official: true,
+			officialSource,
+			officialModels,
+		} : {}),
 	};
+}
+
+function uniqueNonEmptyStrings(value: readonly unknown[]): readonly string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const item of value) {
+		if (typeof item !== 'string') {
+			continue;
+		}
+		const name = item.trim();
+		if (name === '' || seen.has(name)) {
+			continue;
+		}
+		seen.add(name);
+		result.push(name);
+	}
+	return result;
 }
 
 /**

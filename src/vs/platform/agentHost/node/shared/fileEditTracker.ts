@@ -18,6 +18,30 @@ import { IEditSurvivalReporterFactory } from './editSurvivalReporter.js';
 import { IEditArcReporterService } from './editArcReporter.js';
 import { createArcTextEditFromDiff, extractArcTextEdit } from './arcToolEdit.js';
 
+export interface IFileEditSnapshotIdentity {
+	readonly afterPath?: string;
+	readonly omitBefore?: boolean;
+	readonly omitAfter?: boolean;
+}
+
+interface ITrackedEdit {
+	beforeContent: VSBuffer;
+	beforeExisted: boolean;
+	mode: string | undefined;
+	snapshotDone: Promise<void>;
+	previewContent?: string;
+	previewRevision: number;
+	identity?: IFileEditSnapshotIdentity;
+}
+
+interface ICompletedEdit {
+	beforeContent: VSBuffer;
+	beforeExisted: boolean;
+	afterContent: VSBuffer;
+	mode: string | undefined;
+	identity?: IFileEditSnapshotIdentity;
+}
+
 /**
  * Tracks file edits made by tools in a session by snapshotting file content
  * before and after each edit tool invocation, persisting snapshots into the
@@ -30,14 +54,14 @@ export class FileEditTracker {
 	 * before the edit tool runs; popped by {@link completeEdit} when it
 	 * finishes.
 	 */
-	private readonly _pendingEdits = new Map<string, { beforeContent: VSBuffer; beforeExisted: boolean; mode: string | undefined; snapshotDone: Promise<void>; previewContent?: string; previewRevision: number }>();
+	private readonly _pendingEdits = new Map<string, ITrackedEdit>();
 
 	/**
 	 * Completed edits keyed by file path. Populated by {@link completeEdit};
 	 * drained by {@link takeCompletedEdit}, which persists the entry to
 	 * the database.
 	 */
-	private readonly _completedEdits = new Map<string, { beforeContent: VSBuffer; beforeExisted: boolean; afterContent: VSBuffer; mode: string | undefined }>();
+	private readonly _completedEdits = new Map<string, ICompletedEdit>();
 
 	constructor(
 		private readonly _sessionUri: string,
@@ -91,21 +115,23 @@ export class FileEditTracker {
 	 *
 	 * @param filePath - Absolute path of the file that was edited.
 	 */
-	async completeEdit(filePath: string): Promise<void> {
+	async completeEdit(filePath: string, identity?: IFileEditSnapshotIdentity): Promise<void> {
 		const pending = this._pendingEdits.get(filePath);
 		if (!pending) {
 			return;
 		}
 		this._pendingEdits.delete(filePath);
 		await pending.snapshotDone;
-
-		const afterContent = await this._readFile(filePath);
+		const resolvedIdentity = identity ?? pending.identity;
+		const afterPath = resolvedIdentity?.afterPath ?? filePath;
+		const afterContent = resolvedIdentity?.omitAfter ? VSBuffer.fromString('') : await this._readFile(afterPath);
 
 		this._completedEdits.set(filePath, {
 			beforeContent: pending.beforeContent,
 			beforeExisted: pending.beforeExisted,
 			afterContent,
 			mode: pending.mode,
+			identity: resolvedIdentity,
 		});
 	}
 
@@ -136,12 +162,15 @@ export class FileEditTracker {
 	 * disk. The original before-state captured by {@link trackEditStart} remains
 	 * stable across every streamed update.
 	 */
-	async snapshotEditContent(turnId: string, toolCallId: string, filePath: string, afterContent: string): Promise<ToolResultFileEditContent | undefined> {
+	async snapshotEditContent(turnId: string, toolCallId: string, filePath: string, afterContent: string, identity?: IFileEditSnapshotIdentity): Promise<ToolResultFileEditContent | undefined> {
 		const pending = this._pendingEdits.get(filePath);
 		if (!pending) {
 			return undefined;
 		}
 		await pending.snapshotDone;
+		if (identity) {
+			pending.identity = identity;
+		}
 		if (pending.previewContent !== afterContent) {
 			pending.previewContent = afterContent;
 			pending.previewRevision++;
@@ -151,6 +180,7 @@ export class FileEditTracker {
 			beforeExisted: pending.beforeExisted,
 			afterContent: VSBuffer.fromString(afterContent),
 			mode: pending.mode,
+			identity: pending.identity,
 		}, pending.previewRevision)).content;
 	}
 
@@ -168,12 +198,14 @@ export class FileEditTracker {
 		beforeExisted: boolean,
 		afterContent: string,
 		previewRevision: number,
+		identity?: IFileEditSnapshotIdentity,
 	): Promise<ToolResultFileEditContent> {
 		return (await this._persistEditSnapshot(turnId, toolCallId, filePath, {
 			beforeContent: VSBuffer.fromString(beforeContent),
 			beforeExisted,
 			afterContent: VSBuffer.fromString(afterContent),
 			mode: undefined,
+			identity,
 		}, previewRevision)).content;
 	}
 
@@ -265,7 +297,7 @@ export class FileEditTracker {
 		turnId: string,
 		toolCallId: string,
 		filePath: string,
-		edit: { beforeContent: VSBuffer; beforeExisted: boolean; afterContent: VSBuffer; mode: string | undefined },
+		edit: ICompletedEdit,
 		previewRevision?: number,
 	): Promise<{
 		readonly content: ToolResultFileEditContent;
@@ -280,7 +312,13 @@ export class FileEditTracker {
 		const beforeText = edit.beforeContent.toString();
 		const afterText = edit.afterContent.toString();
 		const completionTime = Date.now();
-		const isCreate = !edit.beforeExisted && afterBytes.length > 0;
+		const omitBefore = edit.identity?.omitBefore === true;
+		const omitAfter = edit.identity?.omitAfter === true;
+		const afterPath = edit.identity?.afterPath ?? filePath;
+		const isCreate = omitBefore || (!edit.beforeExisted && afterBytes.length > 0);
+		const isDelete = omitAfter;
+		const isRename = !isDelete && !isCreate && afterPath !== filePath;
+		const storedPath = isDelete ? filePath : afterPath;
 
 		let addedLines: number | undefined;
 		let removedLines: number | undefined;
@@ -298,8 +336,9 @@ export class FileEditTracker {
 			await this._db.storeFileEdit({
 				turnId,
 				toolCallId,
-				filePath,
-				kind: isCreate ? FileEditKind.Create : FileEditKind.Edit,
+				filePath: storedPath,
+				kind: isDelete ? FileEditKind.Delete : isCreate ? FileEditKind.Create : (isRename ? FileEditKind.Rename : FileEditKind.Edit),
+				originalPath: isRename ? filePath : undefined,
 				beforeContent: beforeBytes,
 				afterContent: afterBytes,
 				addedLines,
@@ -317,13 +356,13 @@ export class FileEditTracker {
 			changes,
 			content: {
 				type: ToolResultContentType.FileEdit,
-				before: {
+				before: omitBefore ? undefined : {
 					uri: URI.file(filePath).toString(),
 					content: { uri: buildSessionDbUri(this._sessionUri, toolCallId, filePath, 'before') },
 				},
-				after: {
-					uri: URI.file(filePath).toString(),
-					content: { uri: buildSessionDbUri(this._sessionUri, toolCallId, filePath, 'after', previewRevision) },
+				after: omitAfter ? undefined : {
+					uri: URI.file(afterPath).toString(),
+					content: { uri: buildSessionDbUri(this._sessionUri, toolCallId, afterPath, 'after', previewRevision) },
 				},
 				diff: addedLines !== undefined ? { added: addedLines, removed: removedLines } : undefined,
 			},

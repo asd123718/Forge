@@ -43,10 +43,12 @@ export function getUserDataPath(cliArgs: NativeParsedArgs, productName: string):
 
 function doGetUserDataPath(cliArgs: NativeParsedArgs, productName: string): string {
 
-	// 0. Running out of sources has a fixed productName
-	if (process.env['VSCODE_DEV']) {
-		productName = 'code-oss-dev';
-	}
+	// Source launches set VSCODE_DEV and may pass `nameShort` with a trailing
+	// " Dev" used only for the window title. Keep the shipped product folder
+	// (`Forge`) so installer and `scripts/code.bat` share settings, secrets,
+	// and session state. Isolation remains available via --user-data-dir or
+	// VSCODE_APPDATA.
+	productName = resolveUserDataProductName(productName);
 
 	// 1. Support portable mode
 	const portablePath = process.env['VSCODE_PORTABLE'];
@@ -103,4 +105,15 @@ export function getDefaultUserDataPath(productName: string): string {
 	}
 
 	return join(appDataPath, productName);
+}
+
+/**
+ * Folder name under the platform application-data directory.
+ * `VSCODE_DEV` used to force `code-oss-dev`; Forge keeps the installed name.
+ */
+export function resolveUserDataProductName(productName: string): string {
+	if (process.env['VSCODE_DEV'] && productName.endsWith(' Dev')) {
+		return productName.slice(0, -' Dev'.length);
+	}
+	return productName;
 }

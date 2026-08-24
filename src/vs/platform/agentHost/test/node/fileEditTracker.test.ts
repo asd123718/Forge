@@ -379,4 +379,23 @@ suite('FileEditTracker', () => {
 		assert.strictEqual(new TextDecoder().decode(content.beforeContent), 'original');
 		assert.strictEqual(new TextDecoder().decode(content.afterContent), 'modified');
 	});
+
+	test('omits before URI for creates, after URI for deletes, and uses distinct URIs for moves', async () => {
+		await tracker.trackEditStart('/workspace/created.txt');
+		const created = await tracker.snapshotEditContent('turn-1', 'tc-identity-create', '/workspace/created.txt', 'new\n', { omitBefore: true });
+		assert.strictEqual(created?.before, undefined);
+		assert.strictEqual(created?.after?.uri, URI.file('/workspace/created.txt').toString());
+
+		await fileService.writeFile(URI.file('/workspace/deleted.txt'), VSBuffer.fromString('gone\n'));
+		await tracker.trackEditStart('/workspace/deleted.txt');
+		const deleted = await tracker.snapshotEditContent('turn-1', 'tc-identity-delete', '/workspace/deleted.txt', '', { omitAfter: true });
+		assert.ok(deleted?.before);
+		assert.strictEqual(deleted?.after, undefined);
+
+		await fileService.writeFile(URI.file('/workspace/from.ts'), VSBuffer.fromString('move me\n'));
+		await tracker.trackEditStart('/workspace/from.ts');
+		const moved = await tracker.snapshotEditContent('turn-1', 'tc-identity-move', '/workspace/from.ts', 'moved\n', { afterPath: '/workspace/to.ts' });
+		assert.strictEqual(moved?.before?.uri, URI.file('/workspace/from.ts').toString());
+		assert.strictEqual(moved?.after?.uri, URI.file('/workspace/to.ts').toString());
+	});
 });

@@ -5,6 +5,7 @@
 
 import * as dom from '../../../../../../../base/browser/dom.js';
 import { IAnchor } from '../../../../../../../base/browser/ui/contextview/contextview.js';
+import { renderIcon } from '../../../../../../../base/browser/ui/iconLabel/iconLabels.js';
 import { Codicon } from '../../../../../../../base/common/codicons.js';
 import { AnchorPosition } from '../../../../../../../base/common/layout.js';
 import { formatTokenCount } from '../../../../../../../base/common/numbers.js';
@@ -77,7 +78,7 @@ export class ModelPickerConfiguration {
 		const model = this._host.getSelectedModel();
 		const effortConfig = this._getConfigProperty('navigation');
 		const tokensConfig = this._getConfigProperty('tokens');
-		if (compact || !model || noModelsAvailable || (!effortConfig && !tokensConfig)) {
+		if (!model || noModelsAvailable || (!effortConfig && !tokensConfig)) {
 			button.style.display = 'none';
 			return;
 		}
@@ -114,9 +115,15 @@ export class ModelPickerConfiguration {
 			ariaParts.push(fallbackLabel);
 		}
 
-		dom.reset(button, dom.$('span.chat-input-picker-label', undefined, labelParts.join(' ')));
 		button.style.display = '';
-		button.ariaLabel = ariaParts.join(', ');
+		button.ariaLabel = ariaParts.join(', ') || localize('chat.modelPicker.configTooltip', "Configure Model");
+		if (compact) {
+			// Chat input is compact: keep a sliders control next to the model name
+			// instead of hiding thinking-depth / context-size configuration.
+			dom.reset(button, renderIcon(Codicon.settings));
+			return;
+		}
+		dom.reset(button, dom.$('span.chat-input-picker-label', undefined, labelParts.join(' ')));
 	}
 
 	show(button: HTMLElement | undefined, focusGroup?: string): void {

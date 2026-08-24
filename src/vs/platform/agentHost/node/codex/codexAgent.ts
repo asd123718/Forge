@@ -26,7 +26,11 @@ import { createPricingMetaFromBilling, normalizeCAPIBilling } from '../../common
 import { CHATGPT_SUBSCRIPTION_MODEL_SOURCE_ID, createAgentModelSourceMeta } from '../../common/agentModelSource.js';
 import { AgentHostConfigKey, agentHostCustomizationConfigSchema } from '../../common/agentHostCustomizationConfig.js';
 import { CODEX_ACCOUNT_META_KEY, CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY, CODEX_ACCOUNT_SIGN_OUT_REQUEST_KEY, type ICodexAccountInfo } from '../../common/codexAccount.js';
-import { FORGE_MODELS_FILE_NAME, codexProviderSecretResource, codexProviderStoredApiKeyEnv, enabledCodexPickerModels, isCodexProviderStoredApiKeyEnv, normalizeCodexModelsConfig, withDefaultCodexRouting, type ICodexModelProviderEntry, type ICodexModelsConfig } from '../../common/codexModelsConfig.js';
+import { FORGE_MODELS_FILE_NAME, CODEX_MODELS_ROOT_CONFIG_KEY, codexProviderSecretResource, codexProviderStoredApiKeyEnv, isCodexProviderStoredApiKeyEnv, isEmptyCodexModelsConfig, normalizeCodexModelsConfig, preferCodexModelsConfig, withDefaultCodexRouting, type ICodexModelProviderEntry, type ICodexModelsConfig } from '../../common/codexModelsConfig.js';
+import { DEEPSEEK_ACCOUNT_SECRET_RESOURCE, GROK_ACCOUNT_SECRET_RESOURCE } from '../../common/forgeVendorAccount.js';
+import { findOfficialModelProvider, officialCardsEqual, remainingPercentFromUsed, removeOfficialModelProvider, resolveCodexOfficialRoute, shouldIncludeOfficialProviderInCodexPicker, upsertOfficialModelProvider } from '../../common/officialModelCards.js';
+import { ForgeVendorAccountHost } from '../orchestration/forgeVendorAccountHost.js';
+import { providerSecretId, setVendorAccountSecret } from '../orchestration/vendorAccountSecrets.js';
 import { getReasoningEffortDescription, getReasoningEffortLabel, resolveDefaultReasoningEffort } from '../../common/reasoningEffort.js';
 import { AgentSession, AgentSignal, CODEX_AGENT_PROVIDER_ID, IActiveClient, IAgent, IAgentChatConfigCompletionsParams, IAgentChatContext, IAgentChatDataChange, IAgentChatMetadata, IAgentChats, IAgentCreateChatForkSource, IAgentCreateChatResult, IAgentCreateChatOptions, IAgentDescriptor, IAgentDiscoveredChat, IAgentMaterializeChatEvent, IAgentModelInfo, IAgentResolveChatConfigParams, IAgentSpawnChatEvent, IMcpNotification, resolveAgentChatContext, resolveAgentHostInstructions, type AgentProvider, type AuthenticateParams } from '../../common/agent.js';
 import { AgentHostCodexAgentBinaryArgsEnvVar, AgentHostCodexAgentCodexHomeEnvVar, AgentHostCodexAgentSdkRootEnvVar } from '../../common/agentService.js';
@@ -978,6 +982,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	private _providerConfigurationWrite = Promise.resolve();
 	private _providerConfigurationReady = false;
 	private _pendingProviderConfigurationWrite = false;
+	private _forgeModelsReady = false;
 	private _providerConfigurationRefresh: Promise<void> | undefined;
 
 	/** Keyed by caller-facing sessionId (the URI host). */
@@ -1110,6 +1115,9 @@ export class CodexAgent extends Disposable implements IAgent {
 			}
 		}));
 
+		this._hydrateForgeModelsFromDisk();
+		this._logService.info(`[Codex] model cards: ${this._forgeModelsFilePath()}`);
+
 		this._register(this._configurationService.onDidRootConfigChange(() => {
 			const signInRequest = this._configurationService.getRootConfigValues?.()[CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY];
 			if (typeof signInRequest === 'string' && signInRequest !== this._lastSignInRequest) {
@@ -1172,6 +1180,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			const connection = await this._ensureConnection();
 			await connection.client.request<'account/logout'>('account/logout', undefined);
 			await this._refreshAccount(connection.client);
+			this._syncOfficialCodexCard([]);
 			this._queueModelRefresh();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -1215,7 +1224,7 @@ export class CodexAgent extends Disposable implements IAgent {
 		// Without a usable ChatGPT setup, however, Copilot is the only available
 		// transport and must stay required so the workbench shows its auth gate.
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
-		const modelProviders = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()['codex.models']).providers
+		const modelProviders = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()[CODEX_MODELS_ROOT_CONFIG_KEY]).providers
 			.filter(provider => provider.authMode === 'stored')
 			.map((provider): ProtectedResourceMetadata => ({
 				resource: codexProviderSecretResource(provider.id),
@@ -1226,14 +1235,30 @@ export class CodexAgent extends Disposable implements IAgent {
 		return [
 			this._hasExistingChatGPTSetup() ? { ...copilotResource, required: false } : copilotResource,
 			this._gitHubEndpointService.getRepoResource(),
+			{
+				resource: GROK_ACCOUNT_SECRET_RESOURCE,
+				resource_name: 'Grok Build',
+				bearer_methods_supported: ['header'],
+				required: false,
+			},
+			{
+				resource: DEEPSEEK_ACCOUNT_SECRET_RESOURCE,
+				resource_name: 'DeepSeek Harness',
+				bearer_methods_supported: ['header'],
+				required: false,
+			},
 			...modelProviders,
 		];
 	}
 
 	async authenticate(resource: string, token: string): Promise<boolean> {
-		const configuredProvider = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()['codex.models']).providers
+		if (ForgeVendorAccountHost.consumeAuthenticate(resource, token)) {
+			return true;
+		}
+		const configuredProvider = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()[CODEX_MODELS_ROOT_CONFIG_KEY]).providers
 			.find(provider => provider.authMode === 'stored' && codexProviderSecretResource(provider.id) === resource);
 		if (configuredProvider) {
+			setVendorAccountSecret(providerSecretId(configuredProvider.id), token || undefined);
 			const previous = this._modelProviderApiKeys.get(configuredProvider.id);
 			if (token) {
 				this._modelProviderApiKeys.set(configuredProvider.id, token);
@@ -1780,21 +1805,38 @@ export class CodexAgent extends Disposable implements IAgent {
 
 	private async _refreshCodexModels(): Promise<void> {
 		try {
-			const configuredModels = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()['codex.models']);
-			const enabledModels = enabledCodexPickerModels(configuredModels);
-			if (enabledModels.length > 0) {
-				this._codexModels = enabledModels.map((model): IAgentModelInfo => ({
-					provider: model.providerId,
-					id: toCodexModelSelectionId(model.providerId, model.name),
-					name: model.name,
-					supportsVision: false,
-				}));
-				return;
-			}
+			let liveById = new Map<string, ModelListResponse['data'][number]>();
 			if (this._connection.kind === 'idle' && !(await this._isSdkResolvableWithoutDownload()) && !this._hasExistingChatGPTSetup()) {
-				this._codexModels = [];
+				this._codexModels = this._pickerModelsFromCards(undefined, liveById);
 				return;
 			}
+			try {
+				const connection = await this._ensureConnection();
+				const account = await this._refreshAccount(connection.client, false);
+				if (account.status === 'signedIn' && account.authType === 'chatgpt') {
+					const data = [] as ModelListResponse['data'];
+					let cursor: string | null = null;
+					do {
+						const response: ModelListResponse = await connection.client.request<'model/list', ModelListResponse>('model/list', { cursor, limit: 100, includeHidden: false });
+						data.push(...response.data);
+						cursor = response.nextCursor;
+					} while (cursor !== null);
+					liveById = new Map(data.map(model => [model.model, model]));
+					this._syncOfficialCodexCard(data.sort((left, right) => Number(right.isDefault) - Number(left.isDefault)).map(model => model.model));
+				} else if (account.status === 'signedOut' || account.status === 'error') {
+					this._syncOfficialCodexCard([]);
+				}
+			} catch (error) {
+				this._logService.warn(`[Codex] official model list failed: ${error instanceof Error ? error.message : String(error)}`);
+			}
+
+			const fromCards = this._pickerModelsFromCards(undefined, liveById);
+			if (fromCards.length > 0) {
+				this._codexModels = fromCards;
+				return;
+			}
+
+			const configuredModels = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()[CODEX_MODELS_ROOT_CONFIG_KEY]);
 			const configuredProvider = configuredModels.providers.find(provider => provider.id === configuredModels.modelProvider);
 			const localKind = configuredProvider?.kind === 'ollama' || configuredProvider?.kind === 'lmstudio'
 				? configuredProvider.kind
@@ -1821,53 +1863,83 @@ export class CodexAgent extends Disposable implements IAgent {
 				}));
 				return;
 			}
-			const connection = await this._ensureConnection();
-			const account = await this._refreshAccount(connection.client, false);
-			const configResponse = await connection.client.request<'config/read', ConfigReadResponse>('config/read', { includeLayers: false });
-			const modelProvider = configResponse.config.model_provider ?? CODEX_OPENAI_MODEL_PROVIDER;
-			if (modelProvider === CODEX_OPENAI_MODEL_PROVIDER && (account.status === 'signedOut' || account.status === 'error')) {
-				this._codexModels = [];
-				return;
-			}
-			const usesChatGPTSubscription = modelProvider === CODEX_OPENAI_MODEL_PROVIDER && account.status === 'signedIn' && account.authType === 'chatgpt';
-			const pickerProvider = usesChatGPTSubscription ? 'chatgpt' : modelProvider;
-			const configuredModel = typeof configResponse.config.model === 'string' ? configResponse.config.model : undefined;
-			if (!usesChatGPTSubscription && configuredModel) {
-				// Custom and local endpoints commonly do not implement Codex's
-				// enriched /models response. Keep the configured model selectable
-				// even when dynamic discovery is unavailable.
-				this._codexModels = [{
-					provider: pickerProvider,
-					id: toCodexModelSelectionId(modelProvider, configuredModel),
-					name: configuredModel,
-					supportsVision: false,
-				}];
-			}
-			const data = [] as ModelListResponse['data'];
-			let cursor: string | null = null;
-			do {
-				const response: ModelListResponse = await connection.client.request<'model/list', ModelListResponse>('model/list', { cursor, limit: 100, includeHidden: false });
-				data.push(...response.data);
-				cursor = response.nextCursor;
-			} while (cursor !== null);
-			const models = data
-				.sort((left, right) => Number(right.isDefault) - Number(left.isDefault))
-				.map((model): IAgentModelInfo => ({
-					provider: pickerProvider,
-					id: toCodexModelSelectionId(modelProvider, model.model),
+			if (liveById.size > 0) {
+				this._codexModels = [...liveById.values()].map((model): IAgentModelInfo => ({
+					provider: 'chatgpt',
+					id: toCodexModelSelectionId(CODEX_OPENAI_MODEL_PROVIDER, model.model),
 					name: model.displayName,
 					supportsVision: model.inputModalities.includes('image'),
 					configSchema: this._createReasoningEffortConfigSchema(model.supportedReasoningEfforts, model.defaultReasoningEffort, model.model),
-					_meta: createAgentModelSourceMeta(usesChatGPTSubscription ? CHATGPT_SUBSCRIPTION_MODEL_SOURCE_ID : undefined),
+					_meta: createAgentModelSourceMeta(CHATGPT_SUBSCRIPTION_MODEL_SOURCE_ID),
 				}));
-			if (models.length > 0) {
-				this._codexModels = models;
 			}
 		} catch (err) {
 			this._logService.warn(`[Codex] Failed to refresh OpenAI models: ${err instanceof Error ? err.message : String(err)}`);
 			// Keep the last known-good catalog; a transient periodic failure must
 			// not make every model disappear.
 		}
+	}
+
+	private _pickerModelsFromCards(config: ICodexModelsConfig | undefined, liveById: Map<string, ModelListResponse['data'][number]>): IAgentModelInfo[] {
+		const models = config ?? normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()[CODEX_MODELS_ROOT_CONFIG_KEY]);
+		const remaining = remainingPercentFromUsed(this._openAIAccountRateLimit?.usedPercent);
+		const official = findOfficialModelProvider(models, 'codex');
+		const hasOfficialApiKey = !!(official && this._modelProviderApiKeys.get(official.id));
+		const picker: IAgentModelInfo[] = [];
+		for (const provider of models.providers) {
+			if (!shouldIncludeOfficialProviderInCodexPicker(provider)) {
+				continue;
+			}
+			for (const model of provider.models) {
+				const name = model.name.trim();
+				if (!model.enabled || name === '') {
+					continue;
+				}
+				const routed = resolveCodexOfficialRoute({
+					modelProvider: provider.id,
+					modelId: name,
+					config: models,
+					remainingPercent: remaining,
+					hasOfficialApiKey,
+				});
+				const live = liveById.get(name);
+				picker.push({
+					provider: provider.official && routed.modelProvider === CODEX_OPENAI_MODEL_PROVIDER ? 'chatgpt' : provider.id,
+					id: toCodexModelSelectionId(routed.modelProvider, routed.modelId),
+					name: live?.displayName || name,
+					supportsVision: live?.inputModalities.includes('image') ?? false,
+					configSchema: live
+						? this._createReasoningEffortConfigSchema(live.supportedReasoningEfforts, live.defaultReasoningEffort, live.model)
+						: undefined,
+					_meta: createAgentModelSourceMeta(provider.official && routed.modelProvider === CODEX_OPENAI_MODEL_PROVIDER ? CHATGPT_SUBSCRIPTION_MODEL_SOURCE_ID : undefined),
+				});
+			}
+		}
+		return picker;
+	}
+
+	private _syncOfficialCodexCard(officialNames: readonly string[]): void {
+		const current = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()?.[CODEX_MODELS_ROOT_CONFIG_KEY]);
+		const next = officialNames.length > 0
+			? upsertOfficialModelProvider(current, 'codex', officialNames)
+			: removeOfficialModelProvider(current, 'codex');
+		if (officialCardsEqual(current, next)) {
+			return;
+		}
+		this._configurationService.updateRootConfig({ [CODEX_MODELS_ROOT_CONFIG_KEY]: next });
+	}
+
+	private _routeCodexModel(selection: ModelSelection): { readonly modelProvider: string; readonly modelId: string } {
+		const parsed = parseCodexModelSelection(selection);
+		const config = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()?.[CODEX_MODELS_ROOT_CONFIG_KEY]);
+		const official = findOfficialModelProvider(config, 'codex');
+		return resolveCodexOfficialRoute({
+			modelProvider: parsed.modelProvider,
+			modelId: parsed.modelId,
+			config,
+			remainingPercent: remainingPercentFromUsed(this._openAIAccountRateLimit?.usedPercent),
+			hasOfficialApiKey: !!(official && this._modelProviderApiKeys.get(official.id)),
+		});
 	}
 
 	private _discoverLocalModels(kind: 'ollama' | 'lmstudio', baseUrl: string): Promise<readonly ICodexDiscoveredLocalModel[]> {
@@ -2717,6 +2789,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			}
 			this._openAIAccountRateLimit = codexAccountRateLimitFromResponse(response);
 			this._publishAccountInfo(this._toAccountInfo(this._openAIAccountState));
+			void this._queueModelRefresh();
 		} catch (error) {
 			this._logService.warn(`[Codex] account/rateLimits/read failed: ${error instanceof Error ? error.message : String(error)}`);
 		}
@@ -2735,7 +2808,11 @@ export class CodexAgent extends Disposable implements IAgent {
 			),
 			'codex.personality': this._readConfigurationValue(config, 'personality') ?? 'default',
 			'codex.autoReviewPolicy': this._readConfigurationValue(config, 'auto_review.policy') ?? '',
-			'codex.models': this._readForgeModelsFile() ?? this._readModelsConfiguration(config),
+			[CODEX_MODELS_ROOT_CONFIG_KEY]: preferCodexModelsConfig(
+				this._readForgeModelsFile(),
+				this._readModelsConfiguration(config),
+				this._configurationService.getRootConfigValues?.()?.[CODEX_MODELS_ROOT_CONFIG_KEY],
+			) ?? this._readModelsConfiguration(config),
 		};
 	}
 
@@ -2746,7 +2823,8 @@ export class CodexAgent extends Disposable implements IAgent {
 	private _readForgeModelsFile(): ICodexModelsConfig | undefined {
 		try {
 			const raw = fs.readFileSync(this._forgeModelsFilePath(), 'utf8');
-			return normalizeCodexModelsConfig(JSON.parse(raw));
+			const parsed = normalizeCodexModelsConfig(JSON.parse(raw));
+			return isEmptyCodexModelsConfig(parsed) ? undefined : parsed;
 		} catch {
 			return undefined;
 		}
@@ -2755,6 +2833,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	private _writeForgeModelsFile(config: ICodexModelsConfig): void {
 		fs.mkdirSync(this._codexHome, { recursive: true });
 		fs.writeFileSync(this._forgeModelsFilePath(), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+		this._logService.info(`[Codex] wrote ${this._forgeModelsFilePath()} providers=${config.providers.length}`);
 	}
 
 	private _readModelsConfiguration(config: Record<string, unknown>): ICodexModelsConfig {
@@ -2770,6 +2849,9 @@ export class CodexAgent extends Disposable implements IAgent {
 				const entry = raw as Record<string, unknown>;
 				const envKey = typeof entry.env_key === 'string' ? entry.env_key : '';
 				const normalizedId = id.toLowerCase();
+				if (normalizedId === 'vscode-proxy') {
+					continue;
+				}
 				const kind = normalizedId.includes('ollama') || entry.base_url === 'http://localhost:11434/v1'
 					? 'ollama'
 					: normalizedId.includes('lmstudio') || entry.base_url === 'http://localhost:1234/v1'
@@ -2798,7 +2880,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private async _writeProviderConfiguration(key: string, value: unknown): Promise<void> {
-		if (key === 'codex.models') {
+		if (key === CODEX_MODELS_ROOT_CONFIG_KEY) {
 			await this._writeModelsConfiguration(value);
 			return;
 		}
@@ -2850,8 +2932,14 @@ export class CodexAgent extends Disposable implements IAgent {
 		const next = withDefaultCodexRouting(normalizeCodexModelsConfig(value));
 		this._writeForgeModelsFile(next);
 		void this._queueModelRefresh();
-		const connection = await this._ensureConnection();
-		const previous = normalizeCodexModelsConfig(this._providerConfigurationValues['codex.models']);
+		let connection: IConnectionReady;
+		try {
+			connection = await this._ensureConnection();
+		} catch (error) {
+			this._logService.warn(`[Codex] wrote ${FORGE_MODELS_FILE_NAME}; config.toml sync deferred: ${error instanceof Error ? error.message : String(error)}`);
+			return;
+		}
+		const previous = normalizeCodexModelsConfig(this._providerConfigurationValues[CODEX_MODELS_ROOT_CONFIG_KEY]);
 		const edits: ConfigEdit[] = [];
 
 		if (next.model !== previous.model) {
@@ -2871,6 +2959,10 @@ export class CodexAgent extends Disposable implements IAgent {
 		// Update only the fields managed by Forge. Writing each leaf preserves
 		// advanced provider options configured directly in config.toml.
 		for (const provider of next.providers) {
+			if (provider.official && provider.baseUrl.trim() === '') {
+				edits.push({ keyPath: `model_providers.${provider.id}`, value: null, mergeStrategy: 'replace' });
+				continue;
+			}
 			const envKey = provider.authMode === 'stored'
 				? codexProviderStoredApiKeyEnv(provider.id)
 				: provider.authMode === 'environment' ? provider.envKey : '';
@@ -2897,22 +2989,66 @@ export class CodexAgent extends Disposable implements IAgent {
 		void this._queueModelRefresh();
 	}
 
+	private _hydrateForgeModelsFromDisk(): void {
+		const fileModels = this._readForgeModelsFile();
+		const current = this._configurationService.getRootConfigValues?.()?.[CODEX_MODELS_ROOT_CONFIG_KEY];
+		const resolved = preferCodexModelsConfig(fileModels, current);
+		if (!resolved) {
+			return;
+		}
+		this._providerConfigurationValues = {
+			...this._providerConfigurationValues,
+			[CODEX_MODELS_ROOT_CONFIG_KEY]: resolved,
+		};
+		this._configurationService.updateRootConfig({ [CODEX_MODELS_ROOT_CONFIG_KEY]: resolved });
+		this._forgeModelsReady = true;
+	}
+
+	private _persistForgeModelsFromRootConfig(): void {
+		if (!this._forgeModelsReady) {
+			return;
+		}
+		const models = this._configurationService.getRootConfigValues?.()?.[CODEX_MODELS_ROOT_CONFIG_KEY];
+		if (models === undefined) {
+			return;
+		}
+		const next = withDefaultCodexRouting(normalizeCodexModelsConfig(models));
+		const existing = this._readForgeModelsFile();
+		if (existing && JSON.stringify(existing) === JSON.stringify(next)) {
+			return;
+		}
+		try {
+			this._writeForgeModelsFile(next);
+			this._providerConfigurationValues = {
+				...this._providerConfigurationValues,
+				[CODEX_MODELS_ROOT_CONFIG_KEY]: next,
+			};
+		} catch (error) {
+			this._logService.error(`[Codex] Failed to write ${FORGE_MODELS_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
 	private _refreshProviderConfiguration(): Promise<void> {
 		return this._providerConfigurationRefresh ??= (async () => {
 			try {
 				if (this._connection.kind === 'idle' && !(await this._isSdkResolvableWithoutDownload())) {
+					this._hydrateForgeModelsFromDisk();
+					this._forgeModelsReady = true;
 					return;
 				}
 				this._providerConfigurationValues = await this._readProviderConfiguration();
 				this._providerConfigurationReady = true;
+				this._forgeModelsReady = true;
 				if (!this._pendingProviderConfigurationWrite) {
 					this._configurationService.updateRootConfig(this._providerConfigurationValues);
 				}
 			} catch (error) {
 				this._logService.warn(`[Codex] Failed to read config.toml: ${error instanceof Error ? error.message : String(error)}`);
+				this._hydrateForgeModelsFromDisk();
+				this._forgeModelsReady = true;
 			} finally {
 				this._providerConfigurationRefresh = undefined;
-				if (this._pendingProviderConfigurationWrite && this._providerConfigurationReady) {
+				if (this._pendingProviderConfigurationWrite && (this._providerConfigurationReady || this._forgeModelsReady)) {
 					this._pendingProviderConfigurationWrite = false;
 					this._queueProviderConfigurationWrite();
 				}
@@ -2921,13 +3057,14 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private _queueProviderConfigurationWrite(): void {
+		this._persistForgeModelsFromRootConfig();
 		if (!this._providerConfigurationReady) {
 			this._pendingProviderConfigurationWrite = true;
 			void this._refreshProviderConfiguration();
 			return;
 		}
 		const values = this._configurationService.getRootConfigValues?.() ?? {};
-		for (const key of ['codex.permissionsPreset', 'codex.personality', 'codex.autoReviewPolicy', 'codex.models']) {
+		for (const key of ['codex.permissionsPreset', 'codex.personality', 'codex.autoReviewPolicy', CODEX_MODELS_ROOT_CONFIG_KEY]) {
 			if (values[key] === this._providerConfigurationValues[key]) { continue; }
 			const value = values[key];
 			if (value === undefined) { continue; }
@@ -3009,10 +3146,11 @@ export class CodexAgent extends Disposable implements IAgent {
 		const mappedParams = this._withHostTurnId(session, params);
 		const startActions = mapFileChangeStarted(session.mapState, mappedParams.turnId, mappedParams.itemId, mappedParams.changes);
 		const entry = session.mapState.itemToToolCall.get(params.itemId);
-		const fileEdits = entry
-			? await this._fileEditObserver(session)?.snapshot(entry.turnId, entry.toolCallId, params.itemId, session.workingDirectory, params.changes) ?? []
-			: [];
-		const actions = [...startActions, ...mapFileChangePatchUpdated(session.mapState, mappedParams, fileEdits)];
+		const snapshot = entry
+			? await this._fileEditObserver(session)?.snapshot(entry.turnId, entry.toolCallId, params.itemId, session.workingDirectory, params.changes)
+			: undefined;
+		const fileEdits = snapshot?.edits ?? [];
+		const actions = [...startActions, ...mapFileChangePatchUpdated(session.mapState, mappedParams, fileEdits, snapshot?.previewUnavailable)];
 		for (const action of actions) {
 			if (subagent) {
 				this._fireSubagent(subagent, action);
@@ -4205,7 +4343,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			}
 
 			const conn = await this._ensureConnection();
-			const resolvedModel = parseCodexModelSelection(model);
+			const resolvedModel = this._routeCodexModel(model);
 			const startResult = await conn.client.request<'thread/start', { thread: { id: string } }>('thread/start', {
 				cwd: workingDirectory.fsPath,
 				model: resolvedModel.modelId,
@@ -4465,7 +4603,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			?? (sourceRead.persistedModelId ? { id: sourceRead.persistedModelId } : undefined)
 			?? this._models.get().find(candidate => parseCodexModelSelection(candidate).modelProvider === sourceRead.thread.modelProvider);
 		const model = this._resolveCreationModel(options?.model, inheritedModel);
-		const resolvedModel = model ? parseCodexModelSelection(model) : undefined;
+		const resolvedModel = model ? this._routeCodexModel(model) : undefined;
 		// Inherit the source session's effective permissions so forking an
 		// auto-review / full-access / read-only session doesn't silently reset the
 		// fork back to the Default preset. Fork callers typically pass an empty
@@ -4704,7 +4842,7 @@ export class CodexAgent extends Disposable implements IAgent {
 		// Mid-session MCP enablement changes apply only when Codex starts or resumes a thread.
 		const mcpServers = this._buildSessionMcpServers(session);
 		const customizationLaunch = await this._buildCustomizationLaunch(session);
-		const resolvedModel = parseCodexModelSelection(model);
+		const resolvedModel = this._routeCodexModel(model);
 		const threadConfig: Record<string, JsonValue> = {
 			web_search: narrowWebSearchMode(config[CodexSessionConfigKey.WebSearchMode]) ?? codexSessionConfigDefaults[CodexSessionConfigKey.WebSearchMode],
 			...customizationLaunch.config,
@@ -5112,7 +5250,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			const resolvedInput = resolveCodexInput(prompt, attachments);
 			cleanupPaths = resolvedInput.cleanupPaths;
 			const model = await this._resolveModel(session);
-			const resolvedModel = parseCodexModelSelection(model);
+			const resolvedModel = this._routeCodexModel(model);
 			const turnOptions = this._turnStartOptions(session, resolvedModel.modelId, customizationLaunch.developerInstructions, configResource);
 			const hostInstructions = resolveAgentHostInstructions(operationContext);
 			await conn.client.request<'turn/start'>('turn/start', {
@@ -5432,7 +5570,7 @@ export class CodexAgent extends Disposable implements IAgent {
 				throw new Error(`Codex model '${model.id}' is not available.`);
 			}
 			const previousProvider = session.materializedModelProvider ?? (session.model ? parseCodexModelSelection(session.model).modelProvider : undefined);
-			const nextProvider = parseCodexModelSelection(supported).modelProvider;
+			const nextProvider = this._routeCodexModel(supported).modelProvider;
 			this._ensureModelProviderAuthenticated(supported);
 			session.model = supported;
 			if (previousProvider !== undefined && previousProvider !== nextProvider) {
@@ -5603,7 +5741,7 @@ export class CodexAgent extends Disposable implements IAgent {
 				const customizationLaunch = await this._buildCustomizationLaunch(session);
 				const multiRootActive = this._isMultiRootActive(session);
 				const runtimeWorkspaceRoots = multiRootActive ? this._runtimeWorkspaceRoots(session) : undefined;
-				const resolvedModel = parseCodexModelSelection(await this._resolveModel(session));
+				const resolvedModel = this._routeCodexModel(await this._resolveModel(session));
 				const resumeResult = await conn.client.request<'thread/resume', ThreadResumeResponse>(
 					'thread/resume',
 					buildCodexResumeParams(

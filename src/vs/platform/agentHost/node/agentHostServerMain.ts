@@ -45,6 +45,8 @@ import { ClaudeProxyService, IClaudeProxyService } from './claude/claudeProxySer
 import { CodexAgent, CodexSdkPackage, resolveCodexDevSdkRoot } from './codex/codexAgent.js';
 import { createCodexProviderConfiguration } from './codex/codexProviderConfiguration.js';
 import { CodexProxyService, ICodexProxyService } from './codex/codexProxyService.js';
+import { ForgeOrchestrationService } from './orchestration/orchestrator.js';
+import { ForgeVendorAccountHost } from './orchestration/forgeVendorAccountHost.js';
 import { AgentSdkDownloader, IAgentSdkDownloader, type IAgentSdkDownloadProgress } from './agentSdkDownloader.js';
 import { IAgentHostOTelService } from '../common/otel/agentHostOTelService.js';
 import { AgentHostOTelService } from './otel/agentHostOTelService.js';
@@ -53,7 +55,7 @@ import { AgentService } from './agentService.js';
 import { IAgentHostStateManager } from './agentHostStateManager.js';
 import { IAgentHostPromptCache } from './agentHostPromptCache.js';
 import { IAgentHostSessionTitleSignal } from './agentHostSessionTitleSignal.js';
-import { AgentHostClaudeSdkRootEnvVar, IAgentService, AgentHostCodexAgentSdkRootEnvVar } from '../common/agentService.js';
+import { AgentHostClaudeSdkRootEnvVar, CODEX_AGENT_PROVIDER_ID, IAgentService, AgentHostCodexAgentSdkRootEnvVar } from '../common/agentService.js';
 import { IAgentConfigurationService } from './agentConfigurationService.js';
 import { IAgentHostStorageService } from './agentHostStorageService.js';
 import { IAgentHostCustomizationEnablementService } from './agentHostCustomizationEnablementService.js';
@@ -342,6 +344,9 @@ async function main(): Promise<void> {
 		} else {
 			logService.error('Codex is the required Forge agent provider, but its SDK could not be resolved.');
 		}
+		const orchestration = disposables.add(instantiationService.createInstance(ForgeOrchestrationService));
+		orchestration.bindCodex(() => agentService.agents.get().find(agent => agent.id === CODEX_AGENT_PROVIDER_ID));
+		disposables.add(instantiationService.createInstance(ForgeVendorAccountHost));
 	}
 
 	// Surface agent-SDK download progress to clients as generic `progress`

@@ -1299,6 +1299,10 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		return this._modelConfigStore.getModelConfiguration(modelId);
 	}
 
+	public setModelConfiguration(modelId: string, values: IStringDictionary<unknown>): Promise<void> {
+		return this._modelConfigStore.setModelConfiguration(modelId, values);
+	}
+
 	/**
 	 * Restores a model's configuration captured in a session's persisted input
 	 * state. Called when the selected model is restored from session history so
@@ -3441,6 +3445,16 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 				// push-to-talk stop action, so cover both so the menu stays put.
 				if ((action.id === 'agentsVoice.startVoiceInChat' || action.id === 'agentsVoice.pttStopInChat') && action instanceof MenuItemAction) {
 					return this.instantiationService.createInstance(VoiceModeActionViewItem, action, options);
+				}
+				if (action.id === OpenModelPickerAction.ID && action instanceof MenuItemAction) {
+					if (!this._currentLanguageModel.get()) {
+						this.setCurrentLanguageModelToDefault();
+					}
+					const executePickerOptions: IChatInputPickerOptions = {
+						...pickerOptions,
+						getOverflowAnchor: () => this.executeToolbar?.getElement() ?? toolbarsContainer,
+					};
+					return this.modelWidget = this.instantiationService.createInstance(ModelPickerActionItem, action, this._createModelPickerDelegate(), executePickerOptions);
 				}
 				return undefined;
 			},

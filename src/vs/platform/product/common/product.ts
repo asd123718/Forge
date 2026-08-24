@@ -39,13 +39,13 @@ else if (globalThis._VSCODE_PRODUCT_JSON && globalThis._VSCODE_PACKAGE_JSON) {
 	product = globalThis._VSCODE_PRODUCT_JSON as unknown as IProductConfiguration;
 	const packageConfiguration = globalThis._VSCODE_PACKAGE_JSON as unknown as IPackageConfiguration;
 
-	// Running out of sources
+	// Running out of sources: keep " Dev" on the window title only.
+	// `dataFolderName` stays `.forge-ai` so argv.json, extensions, and
+	// policy files match the installed app.
 	if (env['VSCODE_DEV']) {
 		Object.assign(product, {
 			nameShort: `${product.nameShort} Dev`,
 			nameLong: `${product.nameLong} Dev`,
-			dataFolderName: `${product.dataFolderName}-dev`,
-			serverDataFolderName: product.serverDataFolderName ? `${product.serverDataFolderName}-dev` : undefined
 		});
 	}
 

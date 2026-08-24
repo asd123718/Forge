@@ -953,18 +953,21 @@ export function mapFileChangePatchUpdated(
 	state: ICodexSessionMapState,
 	params: FileChangePatchUpdatedNotification,
 	fileEdits: readonly ToolResultFileEditContent[] = [],
+	previewUnavailable?: string,
 ): (SessionAction | ChatAction)[] {
 	const entry = state.itemToToolCall.get(params.itemId);
 	if (!entry) {
 		return [];
 	}
 	entry.output = fileChangeOutput(params.changes);
+	const unavailableText = previewUnavailable?.trim();
 	return [{
 		type: ActionType.ChatToolCallContentChanged,
 		turnId: entry.turnId,
 		toolCallId: entry.toolCallId,
 		content: [
 			...(entry.output ? [{ type: ToolResultContentType.Text as const, text: entry.output }] : []),
+			...(unavailableText ? [{ type: ToolResultContentType.Text as const, text: unavailableText }] : []),
 			...fileEdits,
 		],
 	}];

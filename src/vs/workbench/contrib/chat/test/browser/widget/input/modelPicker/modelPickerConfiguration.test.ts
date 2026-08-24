@@ -174,6 +174,27 @@ suite('ModelPickerConfiguration', () => {
 		});
 	});
 
+	test('renders the settings sliders icon in compact chat input', () => {
+		const access: IModelConfigurationAccess = {
+			getModelConfiguration: () => ({ effort: 'medium', context: 65536 }),
+			setModelConfiguration: async () => { },
+			getModelConfigurationActions: () => [],
+		};
+		const controller = new ModelPickerConfiguration({
+			getSelectedModel: () => createModel(),
+			getConfigurationAccess: () => access,
+			isDisabled: () => false,
+			shouldShowCacheBreakHint: () => false,
+			getCacheBreakLearnMoreLink: () => undefined,
+			dismissCacheBreakHint: () => { },
+		}, { show() { }, focusItemById() { }, updateItems() { }, hide() { } } as unknown as IActionWidgetService, { publicLog2: () => { } } as unknown as ITelemetryService);
+		const button = document.createElement('a');
+		controller.renderButton(button, true, false);
+		assert.notStrictEqual(button.style.display, 'none');
+		assert.ok(button.querySelector('.codicon-settings'));
+		controller.dispose();
+	});
+
 	test('uses the host action widget placement and visibility lifecycle', () => {
 		const model = createModel();
 		const container = document.createElement('div');

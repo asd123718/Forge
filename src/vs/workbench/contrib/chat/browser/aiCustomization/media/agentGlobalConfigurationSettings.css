@@ -573,6 +573,24 @@
 	white-space: nowrap;
 }
 
+.agent-models-provider-subtitle {
+	margin-top: 2px;
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 16px;
+}
+
+.agent-models-provider-locked {
+	display: flex;
+	align-items: center;
+	min-height: 26px;
+	padding: 0 8px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: var(--vscode-cornerRadius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-descriptionForeground);
+}
+
 .agent-models-provider-actions {
 	display: flex;
 	align-items: center;

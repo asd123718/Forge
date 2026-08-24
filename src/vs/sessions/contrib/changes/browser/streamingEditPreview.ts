@@ -12,7 +12,7 @@ import { isIChatSessionFileChange2 } from '../../../../workbench/contrib/chat/co
 import { ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { isActiveSessionStatus } from '../../../services/sessions/common/session.js';
 
-export { buildStreamingEditAnimation, buildStreamingEditFrames } from '../../../../workbench/contrib/chat/browser/agentSessions/agentHost/liveEditPreview.js';
+export { buildStreamingEditAnimation, buildStreamingEditFrames, DialecticLiveEditSlotMap, liveEditPreviewShouldOpenEditor, liveEditPreviewUsesSplit } from '../../../../workbench/contrib/chat/browser/agentSessions/agentHost/liveEditPreview.js';
 
 /** Routes Sessions-app file snapshots through Forge's shared live Diff controller. */
 export class StreamingEditPreviewContribution extends Disposable implements IWorkbenchContribution {
@@ -59,6 +59,7 @@ export class StreamingEditPreviewContribution extends Disposable implements IWor
 				this._controller.finishContext(contextKey);
 				return;
 			}
+			let focused = this._seenRevisions.size > 0;
 			for (const change of chat.lastTurnChanges?.read(reader) ?? []) {
 				const snapshotUri = change.modifiedSnapshotUri;
 				if (!snapshotUri) {
@@ -69,7 +70,9 @@ export class StreamingEditPreviewContribution extends Disposable implements IWor
 					continue;
 				}
 				this._seenRevisions.set(resource.toString(), snapshotUri.toString());
-				this._controller.show({ contextKey, chatKey: chat.resource.toString(), resource, originalUri: change.originalUri, snapshotUri, isFinal: false });
+				const takeFocus = !focused;
+				focused = true;
+				this._controller.show({ contextKey, chatKey: chat.resource.toString(), resource, originalUri: change.originalUri, snapshotUri, isFinal: false, takeFocus });
 			}
 		}));
 	}

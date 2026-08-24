@@ -16,8 +16,11 @@ foreach ($requiredPath in $requiredPaths) {
 	}
 }
 
-$packageJson = Get-Content -LiteralPath (Join-Path $vscodeRoot 'package.json') -Raw | ConvertFrom-Json
-$codexVersion = $packageJson.devDependencies.'@openai/codex'
+$packageJsonText = Get-Content -LiteralPath (Join-Path $vscodeRoot 'package.json') -Raw
+if ($packageJsonText -notmatch '"@openai/codex"\s*:\s*"([^"]+)"') {
+	throw 'package.json does not pin @openai/codex.'
+}
+$codexVersion = $Matches[1]
 $protocolVersion = (Get-Content -LiteralPath (Join-Path $vscodeRoot 'build\codex\codex-version.txt') -Raw).Trim()
 if ($protocolVersion -ne $codexVersion) {
 	throw "Generated protocol provenance does not match the @openai/codex pin ($codexVersion)."

@@ -248,6 +248,38 @@ suite('AgentConfigurationService', () => {
 		fs.rmSync(directory, { recursive: true, force: true });
 	});
 
+	test('persists Codex model cards in agent-host config', async () => {
+		const directory = fs.mkdtempSync(join(os.tmpdir(), 'agent-config-'));
+		const resource = URI.file(join(directory, 'agent-host-config.json'));
+		const models = { model: 'qwen3-coder', modelProvider: 'forge-ollama', providers: [{ id: 'forge-ollama', catalogId: 'ollama', name: 'Ollama', kind: 'ollama' }] };
+		const localManager = disposables.add(new AgentHostStateManager(new NullLogService()));
+		const localService = disposables.add(new AgentConfigurationService(localManager, new NullLogService(), resource));
+		localService.registerProviderConfiguration({
+			provider: 'codex',
+			title: 'Codex',
+			description: 'Codex settings',
+			properties: { 'codex.models': { type: 'object', title: 'Models', default: { model: '', modelProvider: '', providers: [] } } },
+			settings: [{ key: 'codex.models', group: 'Models', kind: 'models' }],
+		});
+
+		localService.updateRootConfig({ 'codex.models': models });
+		await localService.whenIdle();
+
+		const persisted = JSON.parse(fs.readFileSync(resource.fsPath, 'utf8')) as Record<string, unknown>;
+		assert.deepStrictEqual(persisted['codex.models'], models);
+
+		const reloadedManager = disposables.add(new AgentHostStateManager(new NullLogService()));
+		disposables.add(new AgentConfigurationService(reloadedManager, new NullLogService(), resource, [{
+			provider: 'codex',
+			title: 'Codex',
+			description: 'Codex settings',
+			properties: { 'codex.models': { type: 'object', title: 'Models', default: { model: '', modelProvider: '', providers: [] } } },
+			settings: [{ key: 'codex.models', group: 'Models', kind: 'models' }],
+		}]));
+		assert.deepStrictEqual(reloadedManager.rootState.config?.values['codex.models'], models);
+		fs.rmSync(directory, { recursive: true, force: true });
+	});
+
 	test('publishes transient root values without persisting them', async () => {
 		const directory = fs.mkdtempSync(join(os.tmpdir(), 'agent-config-'));
 		const resource = URI.file(join(directory, 'agent-host-config.json'));

@@ -192,6 +192,9 @@ import './contrib/chat/electron-browser/tunnelHost.contribution.js';
 import './contrib/forge/electron-browser/forgeStartup.contribution.js';
 import './contrib/forge/electron-browser/forgeCodexLiveEdit.contribution.js';
 import './contrib/forge/electron-browser/forgeAccount.contribution.js';
+import './contrib/forge/electron-browser/forgeWorkMode.contribution.js';
+import './contrib/forge/electron-browser/forgeAgentSetup.contribution.js';
+import './contrib/forge/electron-browser/forgeOrchestration.contribution.js';
 
 // Copilot Voice
 import './contrib/agentsVoice/electron-browser/agentsVoiceNativeCommands.js';

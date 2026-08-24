@@ -7,7 +7,8 @@ import * as DOM from '../../../../../base/browser/dom.js';
 import { Button } from '../../../../../base/browser/ui/button/button.js';
 import { SelectBox, type ISelectOptionItem } from '../../../../../base/browser/ui/selectBox/selectBox.js';
 import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
-import { CODEX_MODEL_CATALOG, allocateCodexProviderId, defaultCodexModelProviderEntry, getCodexModelCatalogEntry, isLocalCatalog, isOllamaCatalog, normalizeCodexModelsConfig, withDefaultCodexRouting, type ICodexModelCatalogEntry, type ICodexModelProviderEntry, type ICodexModelsConfig, type ICodexSavedModel } from '../../../../../platform/agentHost/common/codexModelsConfig.js';
+import { allocateCodexProviderId, defaultCodexModelProviderEntry, discoversCodexLocalModels, getCodexModelCatalogEntry, isLocalCatalog, isOllamaCatalog, listCodexModelCatalog, normalizeCodexModelsConfig, withDefaultCodexRouting, type ICodexModelCatalogEntry, type ICodexModelProviderEntry, type ICodexModelsConfig, type ICodexSavedModel } from '../../../../../platform/agentHost/common/codexModelsConfig.js';
+import { isOfficialLockedModel, isOfficialModelProvider, officialModelCardSpec } from '../../../../../platform/agentHost/common/officialModelCards.js';
 import { forgeLocalize } from '../../../../../platform/agentHost/common/forgeLocale.js';
 import { IContextViewService } from '../../../../../platform/contextview/browser/contextView.js';
 import { ollamaTagsUrl, parseOllamaTagsJson, uniqueModelNames } from '../../../../../platform/native/common/ollamaList.js';
@@ -88,13 +89,13 @@ export class AgentModelsSettings extends Disposable {
 
 	private usedCatalogIds(exceptIndex?: number): Set<string> {
 		return new Set(this.providers
-			.filter((_, index) => index !== exceptIndex)
+			.filter((provider, index) => index !== exceptIndex && !isOfficialModelProvider(provider))
 			.map(provider => provider.catalogId));
 	}
 
 	private nextUnusedCatalogId(): string | undefined {
 		const used = this.usedCatalogIds();
-		return CODEX_MODEL_CATALOG.find(entry => !used.has(entry.id))?.id;
+		return listCodexModelCatalog().find(entry => !used.has(entry.id))?.id;
 	}
 
 	private usedModelNames(index: number, exceptRow?: number): Set<string> {
@@ -114,7 +115,7 @@ export class AgentModelsSettings extends Disposable {
 
 	private catalogSelectOptions(index: number): { value: string; label: string; detail?: string; disabled?: boolean }[] {
 		const used = this.usedCatalogIds(index);
-		return CODEX_MODEL_CATALOG.map(entry => ({
+		return listCodexModelCatalog().map(entry => ({
 			value: entry.id,
 			label: entry.label,
 			disabled: used.has(entry.id),
@@ -154,7 +155,7 @@ export class AgentModelsSettings extends Disposable {
 		this.listEl = DOM.append(providersSection, DOM.$('.agent-models-providers-list'));
 		for (let i = 0; i < this.providers.length; i++) {
 			this.renderProvider(DOM.append(this.listEl, DOM.$('.agent-models-provider')), i);
-			if (isLocalCatalog(this.providers[i].catalogId)) {
+			if (discoversCodexLocalModels(this.providers[i].catalogId)) {
 				this.ensureLocalDiscovery(this.providers[i]);
 			}
 		}
@@ -177,7 +178,7 @@ export class AgentModelsSettings extends Disposable {
 		}
 		const card = DOM.append(this.listEl, DOM.$('.agent-models-provider'));
 		this.renderProvider(card, this.providers.length - 1);
-		if (isLocalCatalog(catalogId)) {
+		if (discoversCodexLocalModels(catalogId)) {
 			this.ensureLocalDiscovery(this.providers[this.providers.length - 1]);
 		}
 		this.refreshCatalogSelects();
@@ -211,10 +212,16 @@ export class AgentModelsSettings extends Disposable {
 	}
 
 	private removeModelRow(index: number, rowIndex: number): void {
-		const rows = this.visibleModels(this.providers[index]).filter((_, i) => i !== rowIndex);
-		const next = rows.length > 0 ? rows : [{ name: '', enabled: true }];
+		const provider = this.providers[index];
+		const rows = this.visibleModels(provider);
+		if (isOfficialLockedModel(provider, rows[rowIndex]?.name ?? '')) {
+			this.showError(forgeLocalize('codex.models.official.modelLocked', 'Official models on this card cannot be deleted.', '官方模型不能删除。'));
+			return;
+		}
+		const nextRows = rows.filter((_, i) => i !== rowIndex);
+		const next = nextRows.length > 0 ? nextRows : [{ name: '', enabled: true }];
 		this.updateProvider(index, { models: next, selectedModel: next.find(model => model.name.trim() !== '')?.name ?? '' });
-		if (this.providers[index].id && this.originalProviders.some(provider => provider.id === this.providers[index].id)) {
+		if (this.providers[index].id && this.originalProviders.some(candidate => candidate.id === this.providers[index].id)) {
 			void this.persist(false);
 			return;
 		}
@@ -224,48 +231,65 @@ export class AgentModelsSettings extends Disposable {
 	private renderProvider(card: HTMLElement, index: number): void {
 		const provider = this.providers[index];
 		const catalog = getCodexModelCatalogEntry(provider.catalogId);
+		const official = isOfficialModelProvider(provider);
 		card.dataset['layoutId'] = `provider:${this.discoveryKey(provider)}`;
+		if (official) {
+			card.classList.add('agent-models-provider-official');
+		}
 		const header = DOM.append(card, DOM.$('.agent-models-provider-header'));
 		const identity = DOM.append(header, DOM.$('.agent-models-provider-identity'));
 		DOM.append(identity, DOM.$('.agent-models-provider-title')).textContent = provider.name || catalog.label;
+		if (official) {
+			DOM.append(identity, DOM.$('.agent-models-provider-subtitle')).textContent = forgeLocalize(
+				'codex.models.official.subtitle',
+				'Official model card. Synced after sign-in and cannot be deleted.',
+				'官方模型卡 · 登录后自动同步，不可删除',
+			);
+		}
 		const actions = DOM.append(header, DOM.$('.agent-models-provider-actions'));
 		this.renderSwitch(actions, provider.enabled, forgeLocalize('codex.models.provider.enabled', 'Show this provider in the agent picker', '在 Agent 模型列表中显示此提供商'), enabled => {
 			this.updateProvider(index, { enabled });
 			void this.persistIfSaved(index);
 		});
-		const removeButton = this.renderDisposables.add(new Button(actions, { ...defaultButtonStyles, secondary: true }));
-		removeButton.label = forgeLocalize('codex.models.provider.remove', 'Remove', '删除');
-		this.renderDisposables.add(removeButton.onDidClick(() => {
-			const removed = this.providers[index];
-			this.providers = this.providers.filter((_, i) => i !== index);
-			if (this.providers.length === 0) {
-				this.providers = [defaultCodexModelProviderEntry()];
-			}
-			this.activeProviderId = this.providers[Math.min(index, this.providers.length - 1)]?.id || `draft:0`;
-			if (removed.id && this.originalProviders.some(provider => provider.id === removed.id)) {
-				void this.persist(false);
-			} else {
-				this.render();
-			}
-		}));
+		if (!official) {
+			const removeButton = this.renderDisposables.add(new Button(actions, { ...defaultButtonStyles, secondary: true }));
+			removeButton.label = forgeLocalize('codex.models.provider.remove', 'Remove', '删除');
+			this.renderDisposables.add(removeButton.onDidClick(() => {
+				const removed = this.providers[index];
+				this.providers = this.providers.filter((_, i) => i !== index);
+				if (this.providers.length === 0) {
+					this.providers = [defaultCodexModelProviderEntry()];
+				}
+				this.activeProviderId = this.providers[Math.min(index, this.providers.length - 1)]?.id || `draft:0`;
+				if (removed.id && this.originalProviders.some(candidate => candidate.id === removed.id)) {
+					void this.persist(false);
+				} else {
+					this.render();
+				}
+			}));
+		}
 
 		const fields = DOM.append(card, DOM.$('.agent-models-provider-fields'));
-		const catalogOptions = this.catalogSelectOptions(index);
-		const catalogSelect = this.renderProviderSelect(fields, forgeLocalize('codex.models.provider.kind', 'Provider', '模型提供商'), catalogOptions, provider.catalogId);
-		this.catalogSelects.set(index, catalogSelect);
-		this.renderDisposables.add(catalogSelect.onDidSelect(event => {
-			const selected = catalogOptions[event.index];
-			if (!selected || selected.disabled) {
-				return;
-			}
-			const nextCatalog = getCodexModelCatalogEntry(selected.value);
-			if (this.usedCatalogIds(index).has(nextCatalog.id)) {
-				this.showError(forgeLocalize('codex.models.provider.alreadyAdded.error', 'Provider "{0}" has already been added.', '提供商“{0}”已经添加过了。', nextCatalog.label));
-				return;
-			}
-			this.applyCatalog(index, nextCatalog);
-			this.render();
-		}));
+		if (official) {
+			this.renderLockedCatalog(fields, catalog.label);
+		} else {
+			const catalogOptions = this.catalogSelectOptions(index);
+			const catalogSelect = this.renderProviderSelect(fields, forgeLocalize('codex.models.provider.kind', 'Provider', '模型提供商'), catalogOptions, provider.catalogId);
+			this.catalogSelects.set(index, catalogSelect);
+			this.renderDisposables.add(catalogSelect.onDidSelect(event => {
+				const selected = catalogOptions[event.index];
+				if (!selected || selected.disabled) {
+					return;
+				}
+				const nextCatalog = getCodexModelCatalogEntry(selected.value);
+				if (this.usedCatalogIds(index).has(nextCatalog.id)) {
+					this.showError(forgeLocalize('codex.models.provider.alreadyAdded.error', 'Provider "{0}" has already been added.', '提供商“{0}”已经添加过了。', nextCatalog.label));
+					return;
+				}
+				this.applyCatalog(index, nextCatalog);
+				this.render();
+			}));
+		}
 
 		const modelRows = DOM.append(fields, DOM.$('.agent-models-model-rows.agent-models-provider-field-wide'));
 		const rows = this.visibleModels(provider);
@@ -273,33 +297,38 @@ export class AgentModelsSettings extends Disposable {
 			this.renderModelRow(modelRows, index, rowIndex, rows, catalog);
 		}
 
+		const urlPlaceholder = official && provider.officialSource
+			? officialModelCardSpec(provider.officialSource).defaultBaseUrl
+			: catalog.autoConfigure
+				? catalog.defaultBaseUrl
+				: forgeLocalize('codex.models.provider.baseUrl.placeholder', 'https://api.example.com/v1', 'https://api.example.com/v1');
 		const baseUrlInput = this.renderProviderField(
 			fields,
 			forgeLocalize('codex.models.provider.baseUrl', 'Provider URL', '提供商网址'),
-			catalog.autoConfigure
-				? catalog.defaultBaseUrl
-				: forgeLocalize('codex.models.provider.baseUrl.placeholder', 'https://api.example.com/v1', 'https://api.example.com/v1'),
+			urlPlaceholder,
 			provider.baseUrl,
 			'text',
 			'agent-models-provider-field-wide',
 			`field:${this.discoveryKey(provider)}:url`,
 		);
-		if (catalog.autoConfigure && !provider.baseUrl) {
+		if (!official && catalog.autoConfigure && !provider.baseUrl) {
 			baseUrlInput.value = catalog.defaultBaseUrl;
 			this.updateProvider(index, { baseUrl: catalog.defaultBaseUrl });
 		}
 		this.renderDisposables.add(DOM.addDisposableListener(baseUrlInput, 'input', () => {
 			this.updateProvider(index, { baseUrl: baseUrlInput.value.trim() });
-			if (isLocalCatalog(this.providers[index].catalogId)) {
+			if (discoversCodexLocalModels(this.providers[index].catalogId)) {
 				this.discoveredLocalModels.delete(this.discoveryKey(this.providers[index]));
 			}
 		}));
 
-		if (!catalog.autoConfigure) {
+		if (official || !catalog.autoConfigure) {
 			const apiKeyInput = this.renderProviderField(
 				fields,
 				forgeLocalize('codex.models.provider.apiKey', 'API key', 'API 密钥'),
-				forgeLocalize('codex.models.provider.apiKey.placeholder', 'Enter the API key', '请输入 API 密钥'),
+				official
+					? forgeLocalize('codex.models.official.apiKey.placeholder', 'Optional fallback API key', '可选备用 API 密钥（默认为空）')
+					: forgeLocalize('codex.models.provider.apiKey.placeholder', 'Enter the API key', '请输入 API 密钥'),
 				'',
 				'password',
 				'agent-models-provider-field-wide',
@@ -313,27 +342,42 @@ export class AgentModelsSettings extends Disposable {
 		}
 	}
 
+	private renderLockedCatalog(parent: HTMLElement, label: string): void {
+		const field = DOM.append(parent, DOM.$('.agent-models-provider-field'));
+		DOM.append(field, DOM.$('.agent-models-provider-field-label')).textContent = forgeLocalize('codex.models.provider.kind', 'Provider', '模型提供商');
+		const locked = DOM.append(field, DOM.$('.agent-models-provider-locked'));
+		locked.textContent = label;
+	}
+
 	private renderModelRow(parent: HTMLElement, index: number, rowIndex: number, rows: readonly ICodexSavedModel[], catalog: ICodexModelCatalogEntry): void {
 		const model = rows[rowIndex];
+		const officialLocked = isOfficialLockedModel(this.providers[index], model.name);
 		const field = DOM.append(parent, DOM.$('.agent-models-provider-field.agent-models-model-row'));
 		field.dataset['layoutId'] = `model:${this.discoveryKey(this.providers[index])}:${rowIndex}`;
 		DOM.append(field, DOM.$('.agent-models-provider-field-label')).textContent = forgeLocalize('codex.models.provider.modelName', 'Model name', '模型名称');
 		const controls = DOM.append(field, DOM.$('.agent-models-model-controls'));
 
-		if (isLocalCatalog(catalog.id)) {
+		if (discoversCodexLocalModels(catalog.id) && !officialLocked) {
 			this.renderLocalModelSelect(controls, index, rowIndex, model);
 		} else {
 			const input = DOM.append(controls, DOM.$('input.agent-global-configuration-settings-input.agent-models-model-input')) as HTMLInputElement;
 			input.value = model.name;
-			input.placeholder = forgeLocalize('codex.models.provider.modelName.placeholder', 'e.g. gpt-5.6', '例如 gpt-5.6');
+			input.placeholder = isLocalCatalog(catalog.id)
+				? forgeLocalize('codex.models.provider.modelName.localPlaceholder', 'e.g. qwen3-coder', '例如 qwen3-coder')
+				: forgeLocalize('codex.models.provider.modelName.placeholder', 'e.g. gpt-5.6', '例如 gpt-5.6');
 			input.ariaLabel = forgeLocalize('codex.models.provider.modelName', 'Model name', '模型名称');
-			this.renderDisposables.add(DOM.addDisposableListener(input, 'input', () => {
-				this.updateModelRow(index, rowIndex, { name: input.value });
-				const accepted = this.visibleModels(this.providers[index])[rowIndex]?.name ?? '';
-				if (input.value.trim() !== '' && input.value.trim() !== accepted && this.usedModelNames(index, rowIndex).has(input.value.trim())) {
-					input.value = accepted;
-				}
-			}));
+			if (officialLocked) {
+				input.readOnly = true;
+				input.title = forgeLocalize('codex.models.official.modelLocked', 'Official models on this card cannot be deleted.', '官方模型不能删除。');
+			} else {
+				this.renderDisposables.add(DOM.addDisposableListener(input, 'input', () => {
+					this.updateModelRow(index, rowIndex, { name: input.value });
+					const accepted = this.visibleModels(this.providers[index])[rowIndex]?.name ?? '';
+					if (input.value.trim() !== '' && input.value.trim() !== accepted && this.usedModelNames(index, rowIndex).has(input.value.trim())) {
+						input.value = accepted;
+					}
+				}));
+			}
 			this.focusTarget ??= () => input.focus();
 		}
 
@@ -356,7 +400,7 @@ export class AgentModelsSettings extends Disposable {
 		const removeButtons = this.modelRemoveButtons.get(index) ?? [];
 		removeButtons.push(removeButton);
 		this.modelRemoveButtons.set(index, removeButtons);
-		removeButton.enabled = rows.length > 1;
+		removeButton.enabled = !officialLocked && rows.length > 1;
 		this.renderDisposables.add(removeButton.onDidClick(() => this.removeModelRow(index, rowIndex)));
 	}
 
@@ -631,10 +675,11 @@ export class AgentModelsSettings extends Disposable {
 			}
 		}
 		for (const [index, buttons] of this.modelRemoveButtons) {
-			const enabled = this.visibleModels(this.providers[index] ?? defaultCodexModelProviderEntry()).length > 1;
-			for (const button of buttons) {
-				button.enabled = enabled;
-			}
+			const provider = this.providers[index] ?? defaultCodexModelProviderEntry();
+			const rows = this.visibleModels(provider);
+			buttons.forEach((button, rowIndex) => {
+				button.enabled = rows.length > 1 && !isOfficialLockedModel(provider, rows[rowIndex]?.name ?? '');
+			});
 		}
 	}
 
@@ -719,7 +764,7 @@ export class AgentModelsSettings extends Disposable {
 	}
 
 	private ensureLocalDiscovery(provider: ICodexModelProviderEntry | undefined, force = false): void {
-		if (!provider || !isLocalCatalog(provider.catalogId)) {
+		if (!provider || !discoversCodexLocalModels(provider.catalogId)) {
 			return;
 		}
 		const key = this.discoveryKey(provider);
@@ -815,9 +860,9 @@ export class AgentModelsSettings extends Disposable {
 			return {
 				...provider,
 				id,
-				name: catalog.label,
-				baseUrl: provider.baseUrl || (catalog.autoConfigure ? catalog.defaultBaseUrl : ''),
-				authMode: catalog.autoConfigure ? 'none' as const : 'stored' as const,
+				name: provider.official ? provider.name : catalog.label,
+				baseUrl: provider.baseUrl || (!provider.official && catalog.autoConfigure ? catalog.defaultBaseUrl : ''),
+				authMode: !provider.official && catalog.autoConfigure ? 'none' as const : 'stored' as const,
 				kind: catalog.kind,
 				models,
 			};
@@ -841,7 +886,7 @@ export class AgentModelsSettings extends Disposable {
 			return error;
 		}
 		if (requireApiKeys) {
-			for (const provider of config.providers.filter(candidate => candidate.authMode === 'stored')) {
+			for (const provider of config.providers.filter(candidate => candidate.authMode === 'stored' && !candidate.official)) {
 				const pending = this.pendingApiKeys.get(provider.id)?.trim();
 				const existing = await this.readApiKey?.(provider.id);
 				if (!pending && !existing) {
@@ -882,10 +927,12 @@ export class AgentModelsSettings extends Disposable {
 				return forgeLocalize('codex.models.provider.id.duplicate', 'Provider "{0}" is duplicated.', '提供商“{0}”重复了。', provider.id);
 			}
 			ids.add(provider.id);
-			if (catalogs.has(provider.catalogId)) {
-				return forgeLocalize('codex.models.provider.alreadyAdded.error', 'Provider "{0}" has already been added.', '提供商“{0}”已经添加过了。', provider.name || provider.catalogId);
+			if (!isOfficialModelProvider(provider)) {
+				if (catalogs.has(provider.catalogId)) {
+					return forgeLocalize('codex.models.provider.alreadyAdded.error', 'Provider "{0}" has already been added.', '提供商“{0}”已经添加过了。', provider.name || provider.catalogId);
+				}
+				catalogs.add(provider.catalogId);
 			}
-			catalogs.add(provider.catalogId);
 			const modelNames = new Set<string>();
 			for (const model of provider.models) {
 				const name = model.name.trim();
@@ -898,7 +945,7 @@ export class AgentModelsSettings extends Disposable {
 				modelNames.add(name);
 			}
 			if (!provider.baseUrl) {
-				if (provider.models.length === 0) {
+				if (provider.official || provider.models.length === 0) {
 					continue;
 				}
 				return forgeLocalize('codex.models.provider.baseUrl.required', 'Provider URL is required for {0}.', '请填写 {0} 的提供商网址。', provider.name || provider.id);

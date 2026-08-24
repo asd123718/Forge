@@ -28,7 +28,9 @@ internal static class ForgeLauncher
 			string forgeRoot = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 			string packagedExecutable = FindPackagedExecutable(forgeRoot);
 			string developmentExecutable = Path.Combine(forgeRoot, ".build", "electron", "Forge.exe");
-			bool usePackaged = File.Exists(packagedExecutable);
+			string developmentMain = Path.Combine(forgeRoot, "out", "main.js");
+			bool hasDevelopment = File.Exists(developmentExecutable) && File.Exists(developmentMain);
+			bool usePackaged = File.Exists(packagedExecutable) && !hasDevelopment;
 			string forgeExecutable = usePackaged ? packagedExecutable : developmentExecutable;
 
 			if (!File.Exists(forgeExecutable))

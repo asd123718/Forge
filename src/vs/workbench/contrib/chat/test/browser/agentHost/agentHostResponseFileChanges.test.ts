@@ -230,6 +230,56 @@ suite('AgentHostResponseFileChangesProvider', () => {
 		assert.strictEqual(fromAgentHostUri(latest[0].modifiedSnapshotURI!).authority, 'revision-2');
 	});
 
+	test('gives streaming create, delete, and rename first-class identities', () => {
+		const ds = store.add(new DisposableStore());
+		const conn = new FakeAgentConnection();
+		const defaultChatUri = URI.parse(buildDefaultChatUri(backendSession.toString()));
+		const provider = ds.add(new AgentHostResponseFileChangesProvider(conn, authority, () => backendSession, () => defaultChatUri));
+		conn.setState(backendSession.toString(), { project: { uri: URI.file('/repo').toString(), displayName: 'repo' } } as unknown as SessionState);
+		conn.setState(defaultChatUri.toString(), {
+			turns: [{
+				id: 't1',
+				responseParts: [{
+					kind: ResponsePartKind.ToolCall,
+					toolCall: {
+						status: ToolCallStatus.Running,
+						content: [
+							{
+								type: ToolResultContentType.FileEdit,
+								after: { uri: URI.file('/repo/created.ts').toString(), content: { uri: 'git-blob://created' } },
+								diff: { added: 1, removed: 0 },
+							},
+							{
+								type: ToolResultContentType.FileEdit,
+								before: { uri: URI.file('/repo/deleted.ts').toString(), content: { uri: 'git-blob://deleted' } },
+								diff: { added: 0, removed: 1 },
+							},
+							{
+								type: ToolResultContentType.FileEdit,
+								before: { uri: URI.file('/repo/from.ts').toString(), content: { uri: 'git-blob://from' } },
+								after: { uri: URI.file('/repo/to.ts').toString(), content: { uri: 'git-blob://to' } },
+								diff: { added: 0, removed: 0 },
+							},
+						],
+					},
+				}],
+			}],
+		} as unknown as ChatState);
+
+		const observable = provider.getFileEditsForRequest(chatResource, 't1')!;
+		let latest: readonly IChatResponseFileEdit[] = [];
+		ds.add(autorun(reader => { latest = observable.read(reader); }));
+		assert.deepStrictEqual(latest.map(diff => ({
+			modified: fromAgentHostUri(diff.modifiedURI).path,
+			isDeleted: diff.isDeleted === true,
+			hasSnapshot: Boolean(diff.modifiedSnapshotURI),
+		})), [
+			{ modified: '/repo/created.ts', isDeleted: false, hasSnapshot: true },
+			{ modified: '/repo/deleted.ts', isDeleted: true, hasSnapshot: false },
+			{ modified: '/repo/to.ts', isDeleted: false, hasSnapshot: true },
+		]);
+	});
+
 	test('preserves an authoritative empty turn changeset', () => {
 		const ds = store.add(new DisposableStore());
 		const conn = new FakeAgentConnection();
@@ -343,9 +393,10 @@ suite('AgentHostResponseFileChangesProvider', () => {
 			isOutsideWorkspace: diff.isOutsideWorkspace,
 			added: diff.added,
 			removed: diff.removed,
+			sourceId: diff.sourceId,
 		})), [
-			{ modified: '/outside/README.md', isOutsideWorkspace: true, added: 7, removed: 0 },
-			{ modified: '/repo/docs.md', isOutsideWorkspace: false, added: 3, removed: 1 },
+			{ modified: '/outside/README.md', isOutsideWorkspace: true, added: 7, removed: 0, sourceId: 'tool-1' },
+			{ modified: '/repo/docs.md', isOutsideWorkspace: false, added: 3, removed: 1, sourceId: 'tool-1' },
 		]);
 	});
 

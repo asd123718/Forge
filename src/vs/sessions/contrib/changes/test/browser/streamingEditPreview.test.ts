@@ -5,7 +5,8 @@
 
 import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
-import { buildStreamingEditAnimation, buildStreamingEditFrames } from '../../browser/streamingEditPreview.js';
+import { URI } from '../../../../../base/common/uri.js';
+import { buildStreamingEditAnimation, buildStreamingEditFrames, DialecticLiveEditSlotMap, liveEditPreviewShouldOpenEditor } from '../../browser/streamingEditPreview.js';
 
 suite('StreamingEditPreview', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
@@ -54,5 +55,28 @@ suite('StreamingEditPreview', () => {
 		assert.ok(animation.frames.some(frame => frame.zip));
 		assert.ok(animation.frames.filter(frame => !frame.zip).length >= 2);
 		assert.strictEqual(animation.frames.at(-1)?.content, modified);
+	});
+
+	test('does not open a two-pane Diff when live preview is marked unavailable', () => {
+		const update = {
+			contextKey: 'chat\0req',
+			chatKey: 'chat',
+			resource: URI.file('/repo/a.ts'),
+			snapshotUri: URI.parse('git-blob://guessed'),
+			isFinal: false,
+			unavailable: true,
+		};
+		assert.strictEqual(liveEditPreviewShouldOpenEditor(update), false);
+		assert.strictEqual(liveEditPreviewShouldOpenEditor({ ...update, unavailable: false }), true);
+	});
+
+	test('pins the first two Dialectic sources to left and right panes', () => {
+		const slots = new DialecticLiveEditSlotMap();
+		assert.strictEqual(slots.slotFor('worker-a'), 0);
+		assert.strictEqual(slots.slotFor('worker-b'), 1);
+		assert.strictEqual(slots.slotFor('worker-a'), 0);
+		assert.strictEqual(slots.slotFor('worker-c'), 0);
+		slots.reset();
+		assert.strictEqual(slots.slotFor('worker-c'), 0);
 	});
 });

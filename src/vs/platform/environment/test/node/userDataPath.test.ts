@@ -59,5 +59,39 @@ suite('User data path', () => {
 		}
 	});
 
+	test('getUserDataPath - VSCODE_DEV shares the shipped product folder', () => {
+		const origDev = process.env['VSCODE_DEV'];
+		const origAppData = process.env['VSCODE_APPDATA'];
+		const origPortable = process.env['VSCODE_PORTABLE'];
+		try {
+			delete process.env['VSCODE_PORTABLE'];
+			process.env['VSCODE_DEV'] = '1';
+			process.env['VSCODE_APPDATA'] = 'appdata-dir';
+
+			const fromWindowTitle = getUserDataPath(parseArgs(process.argv, OPTIONS), 'Forge Dev');
+			const fromShippedName = getUserDataPath(parseArgs(process.argv, OPTIONS), 'Forge');
+			assert.ok(/[\\/]Forge$/.test(fromWindowTitle), fromWindowTitle);
+			assert.ok(/[\\/]Forge$/.test(fromShippedName), fromShippedName);
+			assert.ok(fromWindowTitle.includes('appdata-dir'));
+			assert.ok(!fromWindowTitle.toLowerCase().includes('code-oss-dev'));
+		} finally {
+			if (typeof origDev === 'string') {
+				process.env['VSCODE_DEV'] = origDev;
+			} else {
+				delete process.env['VSCODE_DEV'];
+			}
+			if (typeof origAppData === 'string') {
+				process.env['VSCODE_APPDATA'] = origAppData;
+			} else {
+				delete process.env['VSCODE_APPDATA'];
+			}
+			if (typeof origPortable === 'string') {
+				process.env['VSCODE_PORTABLE'] = origPortable;
+			} else {
+				delete process.env['VSCODE_PORTABLE'];
+			}
+		}
+	});
+
 	ensureNoDisposablesAreLeakedInTestSuite();
 });

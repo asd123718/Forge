@@ -713,8 +713,9 @@ export class AgentSessionsWelcomePage extends EditorPane {
 			return;
 		}
 
-		const providers = this.productService.defaultChatAgent?.provider;
-		if (!providers || !providers.default || !this.productService.defaultChatAgent?.termsStatementUrl || !this.productService.defaultChatAgent?.privacyStatementUrl) {
+		const agent = this.productService.defaultChatAgent;
+		const providers = agent?.provider;
+		if (!providers || !providers.default || !agent?.termsStatementUrl || !agent.privacyStatementUrl) {
 			return;
 		}
 
@@ -735,7 +736,7 @@ export class AgentSessionsWelcomePage extends EditorPane {
 		// Content
 		const content = append(tosCard, $('.agentSessionsWelcome-walkthroughCard-content'));
 		const title = append(content, $('.agentSessionsWelcome-walkthroughCard-title'));
-		title.textContent = localize('tosTitle', "Try GitHub Copilot for free, no sign-in required!");
+		title.textContent = localize('tosTitle', "Forge uses Codex. Review the terms before you start.");
 
 		const desc = append(content, $('.agentSessionsWelcome-walkthroughCard-description'));
 		const descriptionMarkdown = new MarkdownString(
@@ -743,8 +744,8 @@ export class AgentSessionsWelcomePage extends EditorPane {
 				{ key: 'tosDescription', comment: ['{Locked="]({1})"}', '{Locked="]({2})"}'] },
 				"By continuing, you agree to {0}'s [Terms]({1}) and [Privacy Statement]({2}).",
 				providers.default.name,
-				this.productService.defaultChatAgent.termsStatementUrl,
-				this.productService.defaultChatAgent.privacyStatementUrl
+				agent.termsStatementUrl,
+				agent.privacyStatementUrl
 			),
 			{ isTrusted: true }
 		);

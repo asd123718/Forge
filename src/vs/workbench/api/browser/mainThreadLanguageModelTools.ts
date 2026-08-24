@@ -123,8 +123,9 @@ export class MainThreadLanguageModelTools extends Disposable implements MainThre
 		}
 
 		// Convert source from DTO, matching the isBuiltinTool logic from languageModelToolsContribution
-		const isBuiltinTool = this._productService.defaultChatAgent?.chatExtensionId
-			? ExtensionIdentifier.equals(extensionId, this._productService.defaultChatAgent.chatExtensionId)
+		const chatExtensionId = this._productService.defaultChatAgent?.chatExtensionId;
+		const isBuiltinTool = chatExtensionId
+			? ExtensionIdentifier.equals(extensionId, chatExtensionId)
 			: false;
 		const source: ToolDataSource = isBuiltinTool
 			? ToolDataSource.Internal

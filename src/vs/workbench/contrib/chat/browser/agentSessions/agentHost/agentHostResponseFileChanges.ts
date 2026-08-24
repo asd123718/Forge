@@ -236,45 +236,51 @@ export class AgentHostResponseFileChangesProvider extends Disposable implements 
 				continue;
 			}
 			for (const fileEdit of getToolCallFileEdits(responsePart.toolCall)) {
-				const diff = this._fileEditToEntryDiff(fileEdit.edit, workspaceRoots, fileEdit.isComplete);
+				const diff = this._fileEditToEntryDiff(fileEdit.edit, workspaceRoots, fileEdit.isComplete, responsePart.toolCall.toolCallId);
 				if (!diff) {
 					continue;
 				}
 				const key = getComparisonKey(diff.modifiedURI);
 				const existing = byUri.get(key);
-				byUri.set(key, existing ? { ...diff, added: existing.added + diff.added, removed: existing.removed + diff.removed } : diff);
+				byUri.set(key, existing ? { ...diff, added: existing.added + diff.added, removed: existing.removed + diff.removed, sourceId: existing.sourceId ?? diff.sourceId } : diff);
 			}
 		}
 		return [...byUri.values()];
 	}
 
-	private _fileEditToEntryDiff(fileEdit: ISessionFileDiff, workspaceRoots: readonly URI[], isEditComplete: boolean): IChatResponseFileEdit | undefined {
+	private _fileEditToEntryDiff(fileEdit: ISessionFileDiff, workspaceRoots: readonly URI[], isEditComplete: boolean, sourceId?: string): IChatResponseFileEdit | undefined {
 		const normalized = normalizeFileEdit(fileEdit);
-		if (!normalized || !normalized.afterUri) {
+		if (!normalized) {
 			return undefined;
 		}
-		const afterUri = normalized.afterUri;
+		const targetUri = normalized.afterUri ?? normalized.beforeUri;
+		if (!targetUri) {
+			return undefined;
+		}
 
-		const modifiedURI = toAgentHostUri(afterUri, this._connectionAuthority);
+		const modifiedURI = toAgentHostUri(targetUri, this._connectionAuthority);
 		const originalURI = normalized.kind === FileEditKind.Create || !normalized.beforeContentUri
 			? modifiedURI
 			: toAgentHostUri(normalized.beforeContentUri, this._connectionAuthority);
 		const modifiedSnapshotURI = normalized.afterContentUri
 			? toAgentHostUri(normalized.afterContentUri, this._connectionAuthority)
 			: undefined;
+		const isDeleted = normalized.kind === FileEditKind.Delete;
 
 		return {
 			originalURI,
 			modifiedURI,
-			modifiedSnapshotURI,
+			modifiedSnapshotURI: isDeleted ? undefined : modifiedSnapshotURI,
 			added: fileEdit.diff?.added ?? 0,
 			removed: fileEdit.diff?.removed ?? 0,
 			quitEarly: false,
 			identical: false,
 			isFinal: true,
 			isBusy: false,
-			isOutsideWorkspace: !workspaceRoots.some(root => isEqualOrParent(afterUri, root)),
+			isDeleted,
+			isOutsideWorkspace: !workspaceRoots.some(root => isEqualOrParent(targetUri, root)),
 			isEditComplete,
+			sourceId,
 		};
 	}
 

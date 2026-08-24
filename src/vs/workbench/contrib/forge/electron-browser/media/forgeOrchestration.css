@@ -1,0 +1,423 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.forge-orch-host {
+	margin: 0 12px 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.forge-orch {
+	padding: 8px 10px;
+	border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+	border-radius: 8px;
+	background: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	font-size: 12px;
+}
+
+.forge-orch-assign {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	margin: 0;
+	padding: 6px 10px;
+	border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+	border-radius: 8px;
+	background: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	text-align: left;
+}
+
+.forge-orch-assign:hover,
+.forge-orch-assign.open {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.forge-orch-assign-k {
+	opacity: 0.65;
+	flex-shrink: 0;
+}
+
+.forge-orch-assign-v {
+	font-weight: 600;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.forge-orch-assign .codicon {
+	margin-left: auto;
+	opacity: 0.8;
+}
+
+.forge-orch-picker {
+	padding: 8px;
+	border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+	border-radius: 8px;
+	background: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	box-shadow: 0 -8px 24px var(--vscode-widget-shadow, transparent);
+	font-size: 12px;
+}
+
+.forge-orch-picker-title {
+	padding: 4px 6px 6px;
+	opacity: 0.7;
+	font-weight: 600;
+}
+
+.forge-orch-picker-title:not(:first-child) {
+	margin-top: 6px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+}
+
+.forge-orch-choices {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.forge-orch-choice {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	margin: 0;
+	padding: 6px 8px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+
+.forge-orch-choice:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.forge-orch-choice.selected {
+	background: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+
+.forge-orch-choice-mark {
+	width: 14px;
+	height: 14px;
+	border: 1px solid currentColor;
+	border-radius: 50%;
+	flex-shrink: 0;
+	position: relative;
+	opacity: 0.7;
+}
+
+.forge-orch-choice[role="checkbox"] .forge-orch-choice-mark {
+	border-radius: 3px;
+}
+
+.forge-orch-choice.selected .forge-orch-choice-mark::after {
+	content: '';
+	position: absolute;
+	inset: 3px;
+	border-radius: inherit;
+	background: currentColor;
+}
+
+.forge-orch-choice-label {
+	font-weight: 600;
+}
+
+.forge-orch-choice-model {
+	margin-left: auto;
+	opacity: 0.7;
+}
+
+.forge-orch-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 22px;
+}
+
+.forge-orch-title {
+	font-weight: 600;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.forge-orch-meta,
+.forge-orch-worker,
+.forge-orch-files,
+.forge-orch-error {
+	opacity: 0.8;
+}
+
+.forge-orch-actions {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.forge-orch-btn {
+	border: none;
+	background: transparent;
+	color: var(--vscode-textLink-foreground);
+	cursor: pointer;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font: inherit;
+}
+
+.forge-orch-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.forge-orch-status {
+	text-transform: lowercase;
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	flex-shrink: 0;
+}
+
+.forge-orch-status.running,
+.forge-orch-status.planning,
+.forge-orch-status.reviewing {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.forge-orch-status.failed {
+	background: var(--vscode-inputValidation-errorBackground, var(--vscode-statusBarItem-errorBackground));
+}
+
+.forge-orch-status.completed,
+.forge-orch-status.escalated {
+	background: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+	color: var(--vscode-editor-background);
+}
+
+.forge-orch-tasks {
+	margin: 6px 0 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.forge-orch-task {
+	padding-top: 6px;
+	border-top: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+}
+
+.forge-orch-review {
+	margin-top: 8px;
+	white-space: pre-wrap;
+	opacity: 0.9;
+}
+
+.monaco-action-bar .action-item.forge-work-mode-item > .forge-work-mode {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	cursor: pointer;
+}
+
+.monaco-action-bar .action-item.forge-work-mode-item > .forge-work-mode:hover,
+.monaco-action-bar .action-item.forge-work-mode-item > .forge-work-mode[aria-expanded="true"] {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.forge-work-mode-label {
+	font-weight: 600;
+}
+
+.context-view .forge-work-mode-picker {
+	min-width: 280px;
+	padding: 8px;
+	border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+	border-radius: 8px;
+	background: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	box-shadow: 0 -8px 24px var(--vscode-widget-shadow, transparent);
+	font-size: 12px;
+}
+
+.context-view .forge-work-mode-picker .forge-orch-choice {
+	flex-wrap: wrap;
+	align-items: flex-start;
+}
+
+.context-view .forge-work-mode-picker .forge-orch-choice-model {
+	margin-left: 22px;
+	flex-basis: 100%;
+	white-space: normal;
+}
+
+.monaco-action-bar .action-item.forge-logos-agent-item > .forge-logos-agent {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	cursor: pointer;
+}
+
+.monaco-action-bar .action-item.forge-logos-agent-item > .forge-logos-agent:hover,
+.monaco-action-bar .action-item.forge-logos-agent-item > .forge-logos-agent[aria-expanded="true"] {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.forge-logos-agent-label {
+	font-weight: 600;
+}
+
+.forge-agent-picker,
+.context-view .forge-agent-picker {
+	min-width: 260px;
+	padding: 8px;
+	border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+	border-radius: 8px;
+	background: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	box-shadow: 0 -8px 24px var(--vscode-widget-shadow, transparent);
+	font-size: 12px;
+}
+
+.forge-agent-picker-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.forge-agent-picker-head .forge-orch-picker-title {
+	flex: 1;
+	padding-bottom: 4px;
+}
+
+.forge-agent-picker-setup {
+	margin: 0;
+	padding: 2px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+
+.forge-agent-picker-setup:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.context-view .forge-agent-setup {
+	width: min(640px, 92vw);
+	max-height: 70vh;
+	overflow: auto;
+	padding: 10px;
+	border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+	border-radius: 8px;
+	background: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	box-shadow: 0 -8px 24px var(--vscode-widget-shadow, transparent);
+	font-size: 12px;
+}
+
+.forge-agent-setup-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.forge-agent-setup-title {
+	flex: 1;
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.forge-agent-setup-close {
+	margin: 0;
+	padding: 2px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+
+.forge-agent-setup-close:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.forge-agent-setup-hint,
+.forge-agent-setup-empty {
+	opacity: 0.75;
+	margin-bottom: 8px;
+	line-height: 1.4;
+}
+
+.forge-agent-setup-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 10px;
+}
+
+.forge-agent-setup-col {
+	min-width: 0;
+	padding: 8px;
+	border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+	border-radius: 8px;
+}
+
+.forge-agent-setup-col.focused {
+	border-color: var(--vscode-focusBorder, var(--vscode-chat-requestBorder));
+}
+
+.forge-agent-setup-col-title {
+	font-weight: 700;
+	margin-bottom: 8px;
+}
+
+.forge-agent-setup-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 0;
+	border-top: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
+}
+
+.forge-agent-setup-agent {
+	font-weight: 600;
+}
+
+.forge-agent-setup-field {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.forge-agent-setup-field-label {
+	opacity: 0.7;
+}
+
+.forge-agent-setup-select {
+	width: 100%;
+	margin: 0;
+	padding: 4px 6px;
+	border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, transparent));
+	border-radius: 4px;
+	background: var(--vscode-dropdown-background, var(--vscode-editorWidget-background));
+	color: var(--vscode-dropdown-foreground, inherit);
+	font: inherit;
+}

@@ -6,6 +6,7 @@
 import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { readAgentMessageDelegationMeta } from '../../../common/meta/agentMessageDelegationMeta.js';
+import { LIVE_PREVIEW_UNAVAILABLE_MESSAGE } from '../../../node/codex/codexFileEditObserver.js';
 import { createCodexSessionMapState, extractUserInputText, finalizeCodexTurnMapState, mapAgentMessageDelta, mapCommandExecutionOutputDelta, mapErrorNotification, mapFileChangePatchUpdated, mapFileChangeStarted, mapItemCompleted, mapItemStarted, mapMcpToolCallProgress, mapReasoningSummaryPartAdded, mapReasoningSummaryTextDelta, mapReasoningTextDelta, mapTokenUsageUpdated, mapTurnCompleted, mapTurnDiffUpdated, mapTurnStarted, resetCodexTurnMapState, turnStateFromStatus } from '../../../node/codex/codexMapAppServerEvents.js';
 import { ActionType, type ChatAction, type SessionAction } from '../../../common/state/sessionActions.js';
 import { chatReducer } from '../../../common/state/protocol/reducers.js';
@@ -769,6 +770,25 @@ suite('codexMapAppServerEvents', () => {
 			patchTypes: [ActionType.ChatToolCallContentChanged],
 			duplicateStart: [],
 		});
+	});
+
+	test('keeps the tool card and surfaces a live-preview-unavailable notice without a guessed file edit', () => {
+		const state = createCodexSessionMapState();
+		const changes = [{ path: 'src/bad.ts', kind: { type: 'update', move_path: null }, diff: '@@ -1 +1 @@\n-missing\n+new' }] as const;
+		mapFileChangeStarted(state, 'turn_a', 'file_bad', changes);
+		const toolCallId = state.itemToToolCall.get('file_bad')!.toolCallId;
+		const patchActions = mapFileChangePatchUpdated(state, {
+			threadId: 'thr_1', turnId: 'turn_a', itemId: 'file_bad', changes: [...changes],
+		}, [], LIVE_PREVIEW_UNAVAILABLE_MESSAGE);
+		assert.deepStrictEqual(patchActions, [{
+			type: ActionType.ChatToolCallContentChanged,
+			turnId: 'turn_a',
+			toolCallId,
+			content: [
+				{ type: ToolResultContentType.Text, text: 'update: src/bad.ts\n@@ -1 +1 @@\n-missing\n+new' },
+				{ type: ToolResultContentType.Text, text: LIVE_PREVIEW_UNAVAILABLE_MESSAGE },
+			],
+		}]);
 	});
 
 	test('mcpToolCall item maps to tool call lifecycle with progress', () => {

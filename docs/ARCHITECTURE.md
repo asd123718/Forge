@@ -92,6 +92,14 @@ default). A one-time migration copies portable authentication and configuration
 only; versioned caches and databases remain owned by the exact Codex runtime
 that created them.
 
+## Multi-agent orchestration
+
+Forge can schedule a Codex Leader plus parallel Workers without adding extra
+chats. The host-owned `ForgeOrchestrationService` talks to `ILeaderProvider` /
+`IWorkerProvider` adapters. DeepSeek Harness and Grok Build run as subprocesses;
+the workspace is the shared artifact layer. Design, interfaces, UI, and the
+phase-1 vertical slice are in `docs/FORGE-ORCHESTRATION.md`.
+
 ## Streaming diff design
 
 The upstream mapper previously converted `fileChange/patchUpdated` only into a
@@ -99,28 +107,38 @@ text summary. Forge adds a narrow `CodexFileEditObserver` adapter:
 
 1. Capture each file's original content once when the file-change item starts.
 2. Convert every public `FileUpdateChange` update into an in-memory right-hand
-   preview. Adds and deletes are direct; updates apply Codex's unified diff to
-   the stable baseline.
+   preview, **fail-closed**. Adds and deletes are direct; updates apply Codex's
+   unified diff to the stable baseline. Context and deleted lines must match the
+   baseline byte-for-byte after CRLF normalization. Any hunk mismatch, a missing
+   hunk, or an on-disk conflict with the captured baseline refuses the preview
+   instead of guessing the after-state.
 3. Persist before/after snapshots through the shared `FileEditTracker` and
-   session database.
-4. Add structured `FileEdit` content to the existing tool-call update. Each
-   in-flight after-snapshot carries a monotonic URI revision so equal-size text
-   updates cannot be collapsed by observable equality.
-5. The shared `LiveEditPreviewController` automatically opens a native
-   two-pane Diff Editor for the active file. Both the regular Codex side-bar
-   chat and the legacy Sessions surface feed the same controller. It reads the
-   revised snapshot through the existing Agent Host file service and mutates a
-   stable virtual text model on the right. Forge adapts Cline's Apache-2.0
-   EditPreview sweep: unchanged runs zip past, changed runs appear line by line,
-   a yellow active-line/faded-tail overlay marks progress, and the editor follows
-   the cursor. New Codex snapshots interrupt the prior sweep and continue from
-   the visible state, while the workspace file remains under Codex Core's normal
+   session database. Create/delete/rename/move use first-class identities
+   (`omitBefore`, `omitAfter`, distinct after URI) so `normalizeFileEdit` can
+   classify them. Binary and oversized shell snapshots are skipped, not shown as
+   empty text files.
+4. Add structured `FileEdit` content to the existing tool-call update only when
+   reconstruction succeeded. Each in-flight after-snapshot carries a monotonic
+   URI revision so equal-size text updates cannot be collapsed by observable
+   equality. If reconstruction failed, the tool card keeps a text notice:
+   live preview is unavailable and the final disk snapshot appears on completion.
+5. The shared `LiveEditPreviewController` opens a native two-pane Diff Editor
+   only for a trustworthy snapshot. `unavailable` updates never open a right-hand
+   model. The first file in a context may take focus; later deltas use
+   `preserveFocus`. Both the regular Codex side-bar chat and the legacy Sessions
+   surface feed the same controller. Forge adapts Cline's Apache-2.0 EditPreview
+   sweep: unchanged runs zip past, changed runs appear line by line, a yellow
+   active-line/faded-tail overlay marks progress, and the editor follows the
+   cursor. New Codex snapshots interrupt the prior sweep and continue from the
+   visible state, while the workspace file remains under Codex Core's normal
    approval and sandbox flow.
-6. On successful completion, open the actual on-disk file in the same editor
-   group first, then close the exact virtual Diff input. The comparison tab does
-   not accumulate or remain as a post-edit preview; only the normal file editor
-   remains. Canceled/rejected turns use the response-completion fallback to
-   close any unfinished preview as well.
+6. Fallback order is strict patch reconstruction, then `turn/diff/updated`
+   cumulative diff (also fail-closed when inverted hunks do not apply), then the
+   completion disk snapshot. On successful completion, open the actual on-disk
+   file in the same editor group first, then close the exact virtual Diff input.
+   The comparison tab does not accumulate or remain as a post-edit preview; only
+   the normal file editor remains. Canceled/rejected turns use the
+   response-completion fallback to close any unfinished preview as well.
 
 Forge also appends a narrow runtime instruction asking Codex to use its native
 `apply_patch` tool for source/text edits, which preserves true patch streaming.
@@ -128,7 +146,8 @@ This is not treated as the only guarantee: commands that still write through
 PowerShell, shell redirection, or scripts enter the same serialized file-event
 queue. Before execution, the bridge snapshots exact command-referenced paths
 and a bounded small-workspace set (large generated/dependency directories are
-excluded); after execution, changed before/after pairs become normal
+excluded, empty text files are included, binaries and files over 2 MiB skip
+content); after execution, changed before/after pairs become normal
 DB-backed `FileEdit` content on the shell tool result. The editor then opens
 and performs the same line-by-line, auto-scrolling playback. Official
 `turn/diff/updated` notifications provide an additional cumulative-diff path
@@ -150,7 +169,8 @@ completion-only edit experience.
 - Keep Forge-specific runtime code beside the existing Codex bridge and shared
   Agent Host abstractions.
 - Prefer default configuration/product changes over forks of workbench UI.
-- Rebase both upstream directories independently; run protocol and Forge checks
-  after either upstream changes.
+- Do not rewrite published `main` history to restore Code-OSS ancestry. Replay
+  Forge changes with `docs/FORGE-DELTA.md` and `scripts/forge/compare-upstream.ps1`.
+- Record each upstream sync in `docs/UPSTREAM-SYNC-LOG.md`.
 - If app-server changes `FileUpdateChange`, update the observer and its tests,
   then regenerate the pinned protocol through Code - OSS's official script.

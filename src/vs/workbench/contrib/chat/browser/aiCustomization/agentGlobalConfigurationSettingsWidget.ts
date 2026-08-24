@@ -12,7 +12,7 @@ import { Disposable, DisposableStore, MutableDisposable } from '../../../../../b
 import { autorun, type IObservable } from '../../../../../base/common/observable.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { readAgentCustomizationSettings, type IAgentCustomizationSettingsDescriptor } from '../../../../../platform/agentHost/common/agentCustomizationSettings.js';
-import { getCodexModelCatalogEntry, isOllamaCatalog } from '../../../../../platform/agentHost/common/codexModelsConfig.js';
+import { discoversCodexLocalModels, getCodexModelCatalogEntry, isOllamaCatalog } from '../../../../../platform/agentHost/common/codexModelsConfig.js';
 import { FORGE_DISPLAY_LANGUAGE_STORAGE_KEY, FORGE_LANGUAGE_PACK_EXTENSION_ID, forgeLocalize, getForgeDisplayLanguage, setForgeDisplayLanguageOverride, type ForgeDisplayLanguage } from '../../../../../platform/agentHost/common/forgeLocale.js';
 import { ollamaTagsUrl, parseOllamaTagsJson, uniqueModelNames } from '../../../../../platform/native/common/ollamaList.js';
 import type { ConfigPropertySchema, RootState } from '../../../../../platform/agentHost/common/state/protocol/state.js';
@@ -263,6 +263,9 @@ export class AHPAgentSettingsWidget extends Disposable {
 	}
 
 	private async listLocalProviderModels(catalogId: string, baseUrl: string): Promise<readonly string[]> {
+		if (!discoversCodexLocalModels(catalogId)) {
+			return [];
+		}
 		const collected = new Set<string>();
 		const add = (names?: readonly string[]) => {
 			for (const name of names ?? []) {

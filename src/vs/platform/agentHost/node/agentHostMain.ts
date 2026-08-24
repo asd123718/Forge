@@ -16,7 +16,7 @@ import { URI } from '../../../base/common/uri.js';
 import { generateUuid } from '../../../base/common/uuid.js';
 import * as os from 'os';
 import * as inspector from 'inspector';
-import { AgentHostByokModelsEnabledEnvVar, AgentHostIpcChannels, IAgentHostInspectInfo, IAgentHostSocketInfo, IAgentService, IConnectionTrackerService, isAgentEnabled } from '../common/agentService.js';
+import { AgentHostByokModelsEnabledEnvVar, AgentHostIpcChannels, CODEX_AGENT_PROVIDER_ID, IAgentHostInspectInfo, IAgentHostSocketInfo, IAgentService, IConnectionTrackerService, isAgentEnabled } from '../common/agentService.js';
 import { AgentModelRefreshScheduler, MODEL_REFRESH_INTERVAL_MS } from './agentModelRefreshScheduler.js';
 import { AgentService } from './agentService.js';
 import { IAgentHostStateManager } from './agentHostStateManager.js';
@@ -36,6 +36,8 @@ import { ClaudeProxyService, IClaudeProxyService } from './claude/claudeProxySer
 import { CodexAgent, CodexSdkPackage, resolveCodexDevSdkRoot } from './codex/codexAgent.js';
 import { createCodexProviderConfiguration } from './codex/codexProviderConfiguration.js';
 import { CodexProxyService, ICodexProxyService } from './codex/codexProxyService.js';
+import { ForgeOrchestrationService } from './orchestration/orchestrator.js';
+import { ForgeVendorAccountHost } from './orchestration/forgeVendorAccountHost.js';
 import { ByokLmProxyService, IByokLmProxyService } from './copilot/byokLmProxyService.js';
 import { ByokLmBridgeRegistry, IByokLmBridgeRegistry } from './byokLmBridgeRegistry.js';
 import { IAgentHostProxyResolver } from './agentHostProxyResolver.js';
@@ -267,6 +269,9 @@ async function startAgentHost(): Promise<void> {
 		} else {
 			logService.error('Codex is the required Forge agent provider, but its SDK could not be resolved.');
 		}
+		const orchestration = disposables.add(instantiationService.createInstance(ForgeOrchestrationService));
+		orchestration.bindCodex(() => agentService.agents.get().find(agent => agent.id === CODEX_AGENT_PROVIDER_ID));
+		disposables.add(instantiationService.createInstance(ForgeVendorAccountHost));
 	} catch (err) {
 		logService.error('Failed to create AgentService', err);
 		throw err;

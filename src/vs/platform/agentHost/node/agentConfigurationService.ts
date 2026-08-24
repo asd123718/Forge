@@ -13,6 +13,7 @@ import { createDecorator } from '../../instantiation/common/instantiation.js';
 import { ILogService } from '../../log/common/log.js';
 import { AgentHostConfigKey, agentHostCustomizationConfigSchema, defaultAgentHostCustomizationConfigValues } from '../common/agentHostCustomizationConfig.js';
 import { getAgentCustomizationSettingsEntries, getProviderBackedRootConfigKeys, withAgentCustomizationSettings, type IAgentCustomizationSettingsRegistration } from '../common/agentCustomizationSettings.js';
+import { CODEX_MODELS_ROOT_CONFIG_KEY } from '../common/codexModelsConfig.js';
 import { copilotCliConfigSchema } from '../common/copilotCliConfig.js';
 import { sandboxConfigSchema } from '../common/sandboxConfigSchema.js';
 import type { ISchema, SchemaDefinition, SchemaValue } from '../common/agentHostSchema.js';
@@ -315,7 +316,9 @@ export class AgentConfigurationService extends Disposable implements IAgentConfi
 			delete values[key];
 		}
 		for (const key of getProviderBackedRootConfigKeys(this._stateManager.rootState)) {
-			delete values[key];
+			if (key !== CODEX_MODELS_ROOT_CONFIG_KEY) {
+				delete values[key];
+			}
 		}
 		const content = JSON.stringify(values, undefined, '\t');
 		const resource = this._rootConfigResource;
@@ -404,10 +407,12 @@ export class AgentConfigurationService extends Disposable implements IAgentConfi
 		try {
 			const raw = fs.readFileSync(this._rootConfigResource.fsPath, 'utf8');
 			const parsed = JSON.parse(raw) as Record<string, unknown>;
+			const models = parsed[CODEX_MODELS_ROOT_CONFIG_KEY];
 			return {
 				...agentHostCustomizationConfigSchema.validateOrDefault(parsed, defaults),
 				...sandboxConfigSchema.validateOrDefault(parsed, {}),
 				...copilotCliConfigSchema.validateOrDefault(parsed, {}),
+				...(models && typeof models === 'object' && !Array.isArray(models) ? { [CODEX_MODELS_ROOT_CONFIG_KEY]: models } : {}),
 			};
 		} catch (err) {
 			const code = err && typeof err === 'object' && hasKey(err, { code: true }) ? String(err.code) : undefined;

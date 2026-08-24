@@ -5,7 +5,7 @@
 
 import * as assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/common/utils.js';
-import { allocateCodexProviderId, codexProviderSecretResource, codexProviderStoredApiKeyEnv, enabledCodexPickerModels, normalizeCodexModelsConfig } from '../../common/codexModelsConfig.js';
+import { allocateCodexProviderId, codexProviderSecretResource, codexProviderStoredApiKeyEnv, discoversCodexLocalModels, enabledCodexPickerModels, isEmptyCodexModelsConfig, listCodexModelCatalog, normalizeCodexModelsConfig, preferCodexModelsConfig } from '../../common/codexModelsConfig.js';
 
 suite('Codex models configuration', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
@@ -47,6 +47,18 @@ suite('Codex models configuration', () => {
 		assert.strictEqual(codexProviderStoredApiKeyEnv('open-router'), 'FORGE_CODEX_PROVIDER_OPEN_ROUTER_API_KEY');
 	});
 
+	test('ignores empty model snapshots so toml can fill them in', () => {
+		assert.strictEqual(isEmptyCodexModelsConfig({ model: '', modelProvider: '', providers: [] }), true);
+		assert.deepStrictEqual(preferCodexModelsConfig(
+			{ model: '', modelProvider: '', providers: [] },
+			{
+				model: '',
+				modelProvider: 'forge-ollama',
+				providers: [{ id: 'forge-ollama', catalogId: 'ollama', name: 'Ollama', kind: 'ollama' }],
+			},
+		)?.modelProvider, 'forge-ollama');
+	});
+
 	test('keeps saved models and enabled flags when switching providers', () => {
 		const config = normalizeCodexModelsConfig({
 			providers: [{
@@ -64,5 +76,18 @@ suite('Codex models configuration', () => {
 		});
 		assert.deepStrictEqual(enabledCodexPickerModels(config), [{ providerId: 'openai', name: 'gpt-5.6' }]);
 		assert.strictEqual(allocateCodexProviderId('openai', config.providers.map(provider => provider.id)), 'openai-2');
+	});
+
+	test('lists model providers alphabetically by display name', () => {
+		const labels = listCodexModelCatalog().map(entry => entry.label);
+		assert.deepStrictEqual(labels, [...labels].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true })));
+		assert.ok(labels.indexOf('Anthropic') < labels.indexOf('OpenAI'));
+		assert.ok(labels.indexOf('DeepSeek') < labels.indexOf('Ollama'));
+	});
+
+	test('auto-detects local models only for Ollama', () => {
+		assert.strictEqual(discoversCodexLocalModels('ollama'), true);
+		assert.strictEqual(discoversCodexLocalModels('lmstudio'), false);
+		assert.strictEqual(discoversCodexLocalModels('vllm'), false);
 	});
 });

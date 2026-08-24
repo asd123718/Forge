@@ -31,7 +31,11 @@ The source tree currently targets **Windows x64**. The product name is Forge AI 
 - **Streaming file edits**: catalog Codex models can stream native `apply_patch` diffs. Compatible / custom models use the host `write_file` tool, then play a write animation in the editor.
 - **Approvals and changes**: patches still go through Codex approval and sandboxing. Afterward you can Accept, Reject, or Revert in Changes / Multi Diff.
 - **Accounts and remaining quota**: the chat title and Codex Settings Account page support GitHub and Codex sign-in, and show remaining allowance, identity, and plan (not consumed usage).
-- **Custom models**: configure OpenAI, DeepSeek, Qwen, Ollama, LM Studio, and similar providers in Codex Settings. Saved models go to `%USERPROFILE%\.forge\codex\forge-models.json`.
+- **Custom models**: configure OpenAI, DeepSeek, Qwen, Ollama, LM Studio, and similar providers in Codex Settings → Models. Each provider card can hold many model names, with per-model switches and persistence in `%USERPROFILE%\.forge\codex\forge-models.json`. Ollama lists models via `ollama list`; LM Studio uses manual model names.
+- **Vendor accounts**: Codex Settings → Account supports GitHub, Codex, Grok, and DeepSeek sign-in. Official read-only model cards are added on login and removed on logout without overwriting manual cards. When official quota is exhausted and you supplied API credentials, routing can fall back to your API.
+- **Work modes**: **Logos** runs a single agent in the side pane (Codex, DeepSeek Harness, or Grok Build). **Dialectic** assigns a Leader and parallel Workers through the host orchestrator. Agent quick setup (thinking depth, context size) persists across restarts and shares the Models catalog.
+- **Multi-agent orchestration**: `ForgeOrchestrationService` schedules Leader/Worker tasks with git worktrees for isolation. Workers return structured summaries and changed files, not chat transcripts. See [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- **Live Edit**: Logos streams `apply_patch` diffs in a side-by-side preview, then opens one file. Dialectic splits the main editor into two groups so each worker gets its own pane; animations run independently and both files stay open when finished.
 - **Chinese UI**: Codex Settings → Appearance → Language can enable the built-in Simplified Chinese language pack.
 
 ### How it relates to other products
@@ -55,13 +59,14 @@ resources/           # icons and installer artwork
 test/                # unit / smoke tests
 scripts/             # dev launch and Forge helpers
 └── forge/           # launcher, Codex staging, upstream checks
-docs/                # architecture and roadmap
+docs/                # architecture, orchestration, roadmap, packaging
 codex/               # upstream Codex runtime and app-server
 start-forge.cmd      # Windows entry point
+start-forge.exe      # launcher (prefers packaged Forge.exe)
 product.json         # product name, protocol, Windows setup ids
 ```
 
-Seams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Milestones: [docs/ROADMAP.md](docs/ROADMAP.md).
+Seams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Orchestration: [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md). Milestones: [docs/ROADMAP.md](docs/ROADMAP.md). Licensing: [LICENSING.md](LICENSING.md).
 
 ### Requirements
 
@@ -136,11 +141,15 @@ Default installer: `.build\win32-x64\system-setup\VSCodeSetup.exe`. Release fold
 | --- | --- |
 | `%USERPROFILE%\.forge\codex` | Forge Codex home (config, sessions) |
 | `%USERPROFILE%\.forge\codex\forge-models.json` | Custom providers and models |
-| `%APPDATA%\.forge-ai\logs\` | Workbench and Agent Host logs |
+| `%APPDATA%\Forge` | Workbench settings, secrets, chat sessions |
+| `%USERPROFILE%\.forge-ai` | argv.json, extensions, policy |
+| `%APPDATA%\Forge\logs\` | Workbench and Agent Host logs |
+
+Source-run (`scripts\code.bat`) uses the same folders as the installed app. Do not run both at once.
 
 If Codex does not start or sign-in does nothing:
 
-`%APPDATA%\.forge-ai\logs\<date>\window1\exthost\agenthost\agenthost.log`
+`%APPDATA%\Forge\logs\<date>\window1\exthost\agenthost\agenthost.log`
 
 ### Architecture
 
@@ -148,7 +157,8 @@ If Codex does not start or sign-in does nothing:
 Workbench chat / editor / terminal
         │
    Agent Host (session state, approvals, FileEdit)
-        │
+        │                    ForgeOrchestrationService
+        │                    Leader / Worker adapters
    CodexAgent + event mapping
         │  JSON-RPC over stdio
    codex app-server
@@ -156,7 +166,7 @@ Workbench chat / editor / terminal
    Codex Core (tools, sandbox, MCP, skills)
 ```
 
-Streaming patches use `item/fileChange/patchUpdated`. `write_file` snapshots the file before disk write, then uses the same Live Edit preview. Hidden chain-of-thought is not reconstructed; the UI only renders public summaries and status from app-server.
+Streaming patches use `item/fileChange/patchUpdated`. `write_file` snapshots the file before disk write, then uses the same Live Edit preview. Dialectic mode maps workers to editor panes 0 and 1. Hidden chain-of-thought is not reconstructed; the UI only renders public summaries and status from app-server.
 
 ---
 
@@ -185,7 +195,11 @@ Forge 是基于 [Code - OSS](https://github.com/microsoft/vscode) 的独立桌�
 - **流式改文件**：官方模型走原生 `apply_patch` 时，可边生成边出 Diff 预览；自定义模型走宿主 `write_file` 工具，完成后在编辑器里播放写入动画。
 - **审批与变更**：补丁仍走 Codex 的审批与沙箱；完成后可在 Changes / Multi Diff 里 Accept、Reject、Revert。
 - **账号与额度**：聊天标题和 Codex Settings 的 Account 页支持 GitHub / Codex 登录，展示剩余额度、身份与套餐（不展示已消耗量）。
-- **自定义模型**：在 Codex Settings 里配置 OpenAI、DeepSeek、通义、Ollama、LM Studio 等提供商；保存的模型写入 `%USERPROFILE%\.forge\codex\forge-models.json`。
+- **自定义模型**：Codex Settings → Models 里配置 OpenAI、DeepSeek、通义、Ollama、LM Studio 等。一张提供商卡片可包含多个模型名，各自有开关；持久化到 `%USERPROFILE%\.forge\codex\forge-models.json`。Ollama 通过 `ollama list` 检测；LM Studio 需手动输入模型名。
+- **厂商账号**：Account 支持 GitHub、Codex、Grok、DeepSeek 登录。登录后自动添加只读官方模型卡，退出后消失，不覆盖手动卡；官方额度用尽且你填写了 API 时可改走 API。
+- **工作模式**：**Logos** 侧栏选一个 Agent（Codex / DeepSeek Harness / Grok Build）；**Dialectic** 选 Leader 和 Worker 并行编排。快捷配置窗可设思考深度、上下文长度，重启保持，与 Models 共用模型清单。
+- **多 Agent 编排**：Host 内 `ForgeOrchestrationService` 调度 Leader/Worker，git worktree 隔离并行任务。详见 [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md)。
+- **Live Edit**：Logos 用 Diff 边生成边滚；Dialectic 主编辑区左右两块，各 worker 一块，动画独立，播完各留一个文件。
 - **中文界面**：Codex Settings 的外观里可切换 Language；确认后可启用内置简体中文语言包。
 
 ### 和现有产品的关系
@@ -201,7 +215,7 @@ Forge 是基于 [Code - OSS](https://github.com/microsoft/vscode) 的独立桌�
 
 ### 仓库结构
 
-见上方 English 一节的目录树。更细的接缝说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，里程碑见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+见上方 English 一节的目录树。架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，编排见 [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md)，里程碑见 [docs/ROADMAP.md](docs/ROADMAP.md)，许可见 [LICENSING.md](LICENSING.md)。
 
 ### 环境要求
 
@@ -254,9 +268,13 @@ npm run gulp vscode-win32-x64-system-setup
 | --- | --- |
 | `%USERPROFILE%\.forge\codex` | Forge 专用 Codex home |
 | `%USERPROFILE%\.forge\codex\forge-models.json` | 自定义提供商与模型 |
-| `%APPDATA%\.forge-ai\logs\` | 工作台与 Agent Host 日志 |
+| `%APPDATA%\Forge` | 工作台设置、密钥、聊天会话 |
+| `%USERPROFILE%\.forge-ai` | argv.json、扩展、策略 |
+| `%APPDATA%\Forge\logs\` | 工作台与 Agent Host 日志 |
 
-Codex 起不来时看：`%APPDATA%\.forge-ai\logs\<日期>\window1\exthost\agenthost\agenthost.log`
+从源码启动（`scripts\code.bat`）与安装版共用同一套目录。不要两边同时开。
+
+Codex 起不来时看：`%APPDATA%\Forge\logs\<日期>\window1\exthost\agenthost\agenthost.log`
 
 ---
 
@@ -285,7 +303,10 @@ Forge は [Code - OSS](https://github.com/microsoft/vscode) を土台にした�
 - **ストリーミング編集**：公式モデルはネイティブ `apply_patch` の Diff を流せます。互換モデルはホストの `write_file` を使い、完了後にエディタで書き込みアニメーションを再生します。
 - **承認と変更**：パッチは Codex の承認とサンドボックスを通り、Changes / Multi Diff で Accept / Reject / Revert できます。
 - **アカウント**：GitHub / Codex ログイン、残りの枠、プラン表示（消費量は出さない）。
-- **カスタムモデル**：OpenAI、DeepSeek、Qwen、Ollama、LM Studio などを Codex Settings で設定。保存先は `%USERPROFILE%\.forge\codex\forge-models.json`。
+- **カスタムモデル**：Codex Settings → Models でプロバイダーと複数モデル名を設定。Ollama は `ollama list`、LM Studio は手入力。
+- **ベンダーアカウント**：Account で GitHub / Codex / Grok / DeepSeek にログイン。公式の読み取り専用モデルカードを追加（手動カードは上書きしない）。
+- **ワークモード**：**Logos** は単一 Agent、**Dialectic** は Leader + 並列 Worker。詳細は [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md)。
+- **Live Edit**：Logos は Diff ストリーミング、Dialectic はエディタを左右 2 ペインに分割。
 - **中国語 UI**：Appearance の Language から簡体字パックを有効化できます。
 
 ### 他製品との関係
@@ -331,7 +352,10 @@ Forge는 [Code - OSS](https://github.com/microsoft/vscode) 기반의 독립 데�
 - **스트리밍 편집**: 공식 모델은 네이티브 `apply_patch` Diff를 스트리밍할 수 있습니다. 호환 모델은 호스트 `write_file`을 쓰고, 완료 후 편집기에서 쓰기 애니메이션을 재생합니다.
 - **승인**: 패치는 Codex 승인과 샌드박스를 거칩니다. 이후 Changes / Multi Diff에서 Accept / Reject / Revert가 가능합니다.
 - **계정**: GitHub / Codex 로그인, 남은 허용량과 플랜(사용량은 표시하지 않음).
-- **사용자 모델**: OpenAI, DeepSeek, Qwen, Ollama, LM Studio 등을 Codex Settings에서 설정합니다. 저장 위치는 `%USERPROFILE%\.forge\codex\forge-models.json`입니다.
+- **사용자 모델**: Codex Settings → Models에서 프로바이더와 여러 모델 이름을 설정합니다. Ollama는 `ollama list`, LM Studio는 수동 입력입니다.
+- **벤더 계정**: Account에서 GitHub / Codex / Grok / DeepSeek 로그인. 공식 읽기 전용 모델 카드 추가(수동 카드는 덮어쓰지 않음).
+- **작업 모드**: **Logos** 단일 Agent, **Dialectic** Leader + 병렬 Worker. [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md) 참고.
+- **Live Edit**: Logos는 Diff 스트리밍, Dialectic은 편집기를 좌우 두 패널로 분할합니다.
 
 첫 실행 시 기존 `%USERPROFILE%\.codex`에서 `auth.json`과 `config.toml`만 **복사**합니다. Forge 홈은 `%USERPROFILE%\.forge\codex`입니다.
 
@@ -374,7 +398,10 @@ Forge — отдельная настольная IDE на базе [Code - OSS]
 - Потоковое редактирование: у официальных моделей — нативный `apply_patch`; у совместимых — хост-инструмент `write_file` и анимация записи.
 - Патчи проходят approval и песочницу Codex; затем Accept / Reject / Revert в Changes / Multi Diff.
 - Вход GitHub / Codex, отображение **оставшегося** лимита и плана.
-- Свои модели (OpenAI, DeepSeek, Qwen, Ollama, LM Studio) в Codex Settings; файл `%USERPROFILE%\.forge\codex\forge-models.json`.
+- Свои модели в Codex Settings → Models; Ollama через `ollama list`, LM Studio — вручную.
+- Вход GitHub / Codex / Grok / DeepSeek; официальные карточки моделей только для чтения.
+- Режимы **Logos** (один агент) и **Dialectic** (Leader + Workers). См. [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Live Edit: Logos — потоковый Diff; Dialectic — два независимых редактора.
 
 При первом запуске копируются только `auth.json` и `config.toml` из `%USERPROFILE%\.codex`. Домашний каталог Forge: `%USERPROFILE%\.forge\codex`.
 
@@ -417,7 +444,10 @@ Le dépôt cible actuellement **Windows x64**. Nom produit : Forge AI IDE. Ident
 - Édition en flux : `apply_patch` natif pour les modèles catalogue ; outil hôte `write_file` pour les modèles compatibles, puis animation d’écriture.
 - Les rustines passent par l’approbation et le bac à sable Codex, puis Accept / Reject / Revert dans Changes / Multi Diff.
 - Connexion GitHub / Codex, quota **restant** et forfait (pas la consommation).
-- Modèles personnalisés (OpenAI, DeepSeek, Qwen, Ollama, LM Studio) dans Codex Settings ; fichier `%USERPROFILE%\.forge\codex\forge-models.json`.
+- Modèles personnalisés dans Codex Settings → Models ; Ollama via `ollama list`, LM Studio en saisie manuelle.
+- Comptes GitHub / Codex / Grok / DeepSeek ; cartes de modèles officielles en lecture seule.
+- Modes **Logos** (un agent) et **Dialectic** (Leader + Workers). Voir [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Live Edit : Logos en Diff flux ; Dialectic avec deux volets d’éditeur.
 
 Au premier lancement, seuls `auth.json` et `config.toml` sont **copiés** depuis `%USERPROFILE%\.codex`. Répertoire Forge : `%USERPROFILE%\.forge\codex`.
 
@@ -460,7 +490,10 @@ Der Quellbaum zielt derzeit auf **Windows x64**. Produktname: Forge AI IDE. Anwe
 - Streaming-Edits: natives `apply_patch` für Katalogmodelle; Host-Tool `write_file` für kompatible Modelle, danach Schreibanimation.
 - Patches durchlaufen Codex-Freigabe und Sandbox; danach Accept / Reject / Revert in Changes / Multi Diff.
 - GitHub-/Codex-Anmeldung, **verbleibendes** Kontingent und Tarif (kein Verbrauch).
-- Eigene Modelle (OpenAI, DeepSeek, Qwen, Ollama, LM Studio) in Codex Settings; Datei `%USERPROFILE%\.forge\codex\forge-models.json`.
+- Eigene Modelle in Codex Settings → Models; Ollama per `ollama list`, LM Studio manuell.
+- Anmeldung GitHub / Codex / Grok / DeepSeek; offizielle schreibgeschützte Modellkarten.
+- Modi **Logos** (ein Agent) und **Dialectic** (Leader + Workers). Siehe [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Live Edit: Logos als Diff-Stream; Dialectic mit zwei Editor-Gruppen.
 
 Beim ersten Start werden nur `auth.json` und `config.toml` aus `%USERPROFILE%\.codex` **kopiert**. Forge-Home: `%USERPROFILE%\.forge\codex`.
 
@@ -503,7 +536,10 @@ El código apunta ahora a **Windows x64**. Nombre del producto: Forge AI IDE. Id
 - Edición en streaming: `apply_patch` nativo en modelos de catálogo; herramienta de host `write_file` en modelos compatibles, luego animación de escritura.
 - Los parches pasan la aprobación y el sandbox de Codex; después Accept / Reject / Revert en Changes / Multi Diff.
 - Inicio de sesión GitHub / Codex y cuota **restante** (no el consumo).
-- Modelos propios (OpenAI, DeepSeek, Qwen, Ollama, LM Studio) en Codex Settings; archivo `%USERPROFILE%\.forge\codex\forge-models.json`.
+- Modelos propios en Codex Settings → Models; Ollama con `ollama list`, LM Studio manual.
+- Inicio GitHub / Codex / Grok / DeepSeek; tarjetas oficiales de solo lectura.
+- Modos **Logos** (un agente) y **Dialectic** (Leader + Workers). Ver [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Live Edit: Logos con Diff en streaming; Dialectic con dos paneles de editor.
 
 En el primer arranque solo se **copian** `auth.json` y `config.toml` desde `%USERPROFILE%\.codex`. Home de Forge: `%USERPROFILE%\.forge\codex`.
 
