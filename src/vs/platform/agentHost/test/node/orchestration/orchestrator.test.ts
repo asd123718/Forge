@@ -205,6 +205,40 @@ suite('Forge orchestration scheduler', () => {
 		assert.ok(run.tasks.some(task => task.workerProviderId === 'grok-build'));
 	});
 
+	test('falls back to Codex when an assigned CLI worker is unavailable', async () => {
+		const service = createService();
+		const leader = new FakeLeader({
+			summary: 'parallel',
+			contract: 'small patches',
+			tasks: [
+				{ id: 'a', title: 'A', prompt: 'do a', files: [], dependsOn: [], workerHint: 'deepseek-harness' },
+			],
+		});
+		service.setLeader(leader);
+		service.registerWorker({
+			id: 'deepseek-harness',
+			label: 'DeepSeek Harness',
+			defaultModel: 'deepseek-v4-flash',
+			isAvailable: async () => false,
+			run: async () => ({ status: 'failed', summary: '', changedFiles: [], usage: { durationMs: 0 } }),
+		});
+		service.registerWorker(new FakeWorker('codex', 'Codex', async () => ({
+			status: 'completed', summary: 'codex fallback', changedFiles: ['fallback.ts'], usage: { durationMs: 1 },
+		})));
+
+		const run = await service.start({
+			chatUri: 'ahp-chat://x/default',
+			sessionUri: 'codex://x',
+			workspace: await tempWorkspace(),
+			goal: 'Use codex fallback',
+			mode: 'dialectic',
+		});
+
+		assert.strictEqual(run.status, 'completed');
+		assert.strictEqual(run.tasks[0].workerProviderId, 'codex');
+		assert.strictEqual(run.tasks[0].status, 'completed');
+	});
+
 	test('logos mode runs the selected agent without a leader plan', async () => {
 		const service = createService();
 		let prompt = '';

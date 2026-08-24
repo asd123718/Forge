@@ -87,8 +87,14 @@ Cancel aborts the run.
 The original model slot is the **work mode** picker (Logos / Dialectic), not
 three chats. Logos puts a single model picker on the right, with a sliders
 control beside the model name for thinking depth and context size. Dialectic
-keeps Leader / Worker on the composer and the **编排** action. Both the work
-mode and model configuration persist across restarts.
+keeps Leader / Worker on the composer and the **编排** action. In Dialectic,
+pressing **Enter** in the chat input starts orchestration the same way as the
+**编排** button. Both the work mode and model configuration persist across restarts.
+
+CLI workers resolve from sibling source trees, `~/.forge/` install paths, or
+`npx` / `PATH` fallbacks. They require `DEEPSEEK_API_KEY`, `XAI_API_KEY`, or
+saved credentials under `~/.dsh` / `~/.grok`. When a CLI worker is unavailable,
+the scheduler falls back to Codex for that task.
 
 ## Vertical slice
 

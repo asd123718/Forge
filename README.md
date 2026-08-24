@@ -33,8 +33,8 @@ The source tree currently targets **Windows x64**. The product name is Forge AI 
 - **Accounts and remaining quota**: the chat title and Codex Settings Account page support GitHub and Codex sign-in, and show remaining allowance, identity, and plan (not consumed usage).
 - **Custom models**: configure OpenAI, DeepSeek, Qwen, Ollama, LM Studio, and similar providers in Codex Settings → Models. Each provider card can hold many model names, with per-model switches and persistence in `%USERPROFILE%\.forge\codex\forge-models.json`. Ollama lists models via `ollama list`; LM Studio uses manual model names.
 - **Vendor accounts**: Codex Settings → Account supports GitHub, Codex, Grok, and DeepSeek sign-in. Official read-only model cards are added on login and removed on logout without overwriting manual cards. When official quota is exhausted and you supplied API credentials, routing can fall back to your API.
-- **Work modes**: **Logos** runs a single agent in the side pane (Codex, DeepSeek Harness, or Grok Build). **Dialectic** assigns a Leader and parallel Workers through the host orchestrator. Agent quick setup (thinking depth, context size) persists across restarts and shares the Models catalog.
-- **Multi-agent orchestration**: `ForgeOrchestrationService` schedules Leader/Worker tasks with git worktrees for isolation. Workers return structured summaries and changed files, not chat transcripts. See [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- **Work modes**: **Logos** runs a single agent in the side pane (Codex, DeepSeek Harness, or Grok Build). **Dialectic** assigns a Leader and parallel Workers through the host orchestrator; pressing **Enter** or clicking **Orchestrate** starts a run. Agent quick setup (thinking depth, context size) persists across restarts and shares the Models catalog.
+- **Multi-agent orchestration**: `ForgeOrchestrationService` schedules Leader/Worker tasks with git worktrees for isolation. CLI workers require API keys or saved credentials; when DeepSeek Harness or Grok Build is unavailable, Forge falls back to Codex for that task. Workers return structured summaries and changed files, not chat transcripts. See [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
 - **Live Edit**: Logos streams `apply_patch` diffs in a side-by-side preview, then opens one file. Dialectic splits the main editor into two groups so each worker gets its own pane; animations run independently and both files stay open when finished.
 - **Chinese UI**: Codex Settings → Appearance → Language can enable the built-in Simplified Chinese language pack.
 
@@ -197,8 +197,8 @@ Forge 是基于 [Code - OSS](https://github.com/microsoft/vscode) 的独立桌�
 - **账号与额度**：聊天标题和 Codex Settings 的 Account 页支持 GitHub / Codex 登录，展示剩余额度、身份与套餐（不展示已消耗量）。
 - **自定义模型**：Codex Settings → Models 里配置 OpenAI、DeepSeek、通义、Ollama、LM Studio 等。一张提供商卡片可包含多个模型名，各自有开关；持久化到 `%USERPROFILE%\.forge\codex\forge-models.json`。Ollama 通过 `ollama list` 检测；LM Studio 需手动输入模型名。
 - **厂商账号**：Account 支持 GitHub、Codex、Grok、DeepSeek 登录。登录后自动添加只读官方模型卡，退出后消失，不覆盖手动卡；官方额度用尽且你填写了 API 时可改走 API。
-- **工作模式**：**Logos** 侧栏选一个 Agent（Codex / DeepSeek Harness / Grok Build）；**Dialectic** 选 Leader 和 Worker 并行编排。快捷配置窗可设思考深度、上下文长度，重启保持，与 Models 共用模型清单。
-- **多 Agent 编排**：Host 内 `ForgeOrchestrationService` 调度 Leader/Worker，git worktree 隔离并行任务。详见 [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md)。
+- **工作模式**：**Logos** 侧栏选一个 Agent（Codex / DeepSeek Harness / Grok Build）；**Dialectic** 选 Leader 和 Worker 并行编排，按 **Enter** 或点 **编排** 即可开始。快捷配置窗可设思考深度、上下文长度，重启保持，与 Models 共用模型清单。
+- **多 Agent 编排**：Host 内 `ForgeOrchestrationService` 调度 Leader/Worker，git worktree 隔离并行任务。CLI Worker 需要 API 密钥或已保存凭据；DeepSeek Harness / Grok Build 不可用时，Forge 会自动回退到 Codex 执行该任务。详见 [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md)。
 - **Live Edit**：Logos 用 Diff 边生成边滚；Dialectic 主编辑区左右两块，各 worker 一块，动画独立，播完各留一个文件。
 - **中文界面**：Codex Settings 的外观里可切换 Language；确认后可启用内置简体中文语言包。
 
@@ -305,7 +305,7 @@ Forge は [Code - OSS](https://github.com/microsoft/vscode) を土台にした�
 - **アカウント**：GitHub / Codex ログイン、残りの枠、プラン表示（消費量は出さない）。
 - **カスタムモデル**：Codex Settings → Models でプロバイダーと複数モデル名を設定。Ollama は `ollama list`、LM Studio は手入力。
 - **ベンダーアカウント**：Account で GitHub / Codex / Grok / DeepSeek にログイン。公式の読み取り専用モデルカードを追加（手動カードは上書きしない）。
-- **ワークモード**：**Logos** は単一 Agent、**Dialectic** は Leader + 並列 Worker。詳細は [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md)。
+- **ワークモード**：**Logos** は単一 Agent、**Dialectic** は Leader + 並列 Worker。**Enter** または **Orchestrate** で開始。CLI Worker は API キーまたは保存済み資格情報が必要で、利用不可の場合は Codex にフォールバックします。詳細は [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md)。
 - **Live Edit**：Logos は Diff ストリーミング、Dialectic はエディタを左右 2 ペインに分割。
 - **中国語 UI**：Appearance の Language から簡体字パックを有効化できます。
 
@@ -354,7 +354,7 @@ Forge는 [Code - OSS](https://github.com/microsoft/vscode) 기반의 독립 데�
 - **계정**: GitHub / Codex 로그인, 남은 허용량과 플랜(사용량은 표시하지 않음).
 - **사용자 모델**: Codex Settings → Models에서 프로바이더와 여러 모델 이름을 설정합니다. Ollama는 `ollama list`, LM Studio는 수동 입력입니다.
 - **벤더 계정**: Account에서 GitHub / Codex / Grok / DeepSeek 로그인. 공식 읽기 전용 모델 카드 추가(수동 카드는 덮어쓰지 않음).
-- **작업 모드**: **Logos** 단일 Agent, **Dialectic** Leader + 병렬 Worker. [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md) 참고.
+- **작업 모드**: **Logos** 단일 Agent, **Dialectic** Leader + 병렬 Worker. **Enter** 또는 **Orchestrate**로 시작합니다. CLI Worker는 API 키 또는 저장된 자격 증명이 필요하며, 사용할 수 없으면 Codex로 폴백합니다. [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md) 참고.
 - **Live Edit**: Logos는 Diff 스트리밍, Dialectic은 편집기를 좌우 두 패널로 분할합니다.
 
 첫 실행 시 기존 `%USERPROFILE%\.codex`에서 `auth.json`과 `config.toml`만 **복사**합니다. Forge 홈은 `%USERPROFILE%\.forge\codex`입니다.
@@ -400,7 +400,7 @@ Forge — отдельная настольная IDE на базе [Code - OSS]
 - Вход GitHub / Codex, отображение **оставшегося** лимита и плана.
 - Свои модели в Codex Settings → Models; Ollama через `ollama list`, LM Studio — вручную.
 - Вход GitHub / Codex / Grok / DeepSeek; официальные карточки моделей только для чтения.
-- Режимы **Logos** (один агент) и **Dialectic** (Leader + Workers). См. [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Режимы **Logos** (один агент) и **Dialectic** (Leader + Workers). Запуск — **Enter** или **Orchestrate**. CLI-воркеры требуют API-ключ или сохранённые учётные данные; при недоступности Forge переключается на Codex. См. [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
 - Live Edit: Logos — потоковый Diff; Dialectic — два независимых редактора.
 
 При первом запуске копируются только `auth.json` и `config.toml` из `%USERPROFILE%\.codex`. Домашний каталог Forge: `%USERPROFILE%\.forge\codex`.
@@ -446,7 +446,7 @@ Le dépôt cible actuellement **Windows x64**. Nom produit : Forge AI IDE. Ident
 - Connexion GitHub / Codex, quota **restant** et forfait (pas la consommation).
 - Modèles personnalisés dans Codex Settings → Models ; Ollama via `ollama list`, LM Studio en saisie manuelle.
 - Comptes GitHub / Codex / Grok / DeepSeek ; cartes de modèles officielles en lecture seule.
-- Modes **Logos** (un agent) et **Dialectic** (Leader + Workers). Voir [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Modes **Logos** (un agent) et **Dialectic** (Leader + Workers). Démarrez avec **Entrée** ou **Orchestrate**. Les workers CLI exigent une clé API ou des identifiants enregistrés ; sinon Forge bascule sur Codex. Voir [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
 - Live Edit : Logos en Diff flux ; Dialectic avec deux volets d’éditeur.
 
 Au premier lancement, seuls `auth.json` et `config.toml` sont **copiés** depuis `%USERPROFILE%\.codex`. Répertoire Forge : `%USERPROFILE%\.forge\codex`.
@@ -492,7 +492,7 @@ Der Quellbaum zielt derzeit auf **Windows x64**. Produktname: Forge AI IDE. Anwe
 - GitHub-/Codex-Anmeldung, **verbleibendes** Kontingent und Tarif (kein Verbrauch).
 - Eigene Modelle in Codex Settings → Models; Ollama per `ollama list`, LM Studio manuell.
 - Anmeldung GitHub / Codex / Grok / DeepSeek; offizielle schreibgeschützte Modellkarten.
-- Modi **Logos** (ein Agent) und **Dialectic** (Leader + Workers). Siehe [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Modi **Logos** (ein Agent) und **Dialectic** (Leader + Workers). Start mit **Enter** oder **Orchestrate**. CLI-Worker brauchen API-Schlüssel oder gespeicherte Zugangsdaten; sonst fällt Forge auf Codex zurück. Siehe [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
 - Live Edit: Logos als Diff-Stream; Dialectic mit zwei Editor-Gruppen.
 
 Beim ersten Start werden nur `auth.json` und `config.toml` aus `%USERPROFILE%\.codex` **kopiert**. Forge-Home: `%USERPROFILE%\.forge\codex`.
@@ -538,7 +538,7 @@ El código apunta ahora a **Windows x64**. Nombre del producto: Forge AI IDE. Id
 - Inicio de sesión GitHub / Codex y cuota **restante** (no el consumo).
 - Modelos propios en Codex Settings → Models; Ollama con `ollama list`, LM Studio manual.
 - Inicio GitHub / Codex / Grok / DeepSeek; tarjetas oficiales de solo lectura.
-- Modos **Logos** (un agente) y **Dialectic** (Leader + Workers). Ver [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
+- Modos **Logos** (un agente) y **Dialectic** (Leader + Workers). Inicia con **Enter** u **Orchestrate**. Los workers CLI requieren clave API o credenciales guardadas; si no están disponibles, Forge recurre a Codex. Ver [docs/FORGE-ORCHESTRATION.md](docs/FORGE-ORCHESTRATION.md).
 - Live Edit: Logos con Diff en streaming; Dialectic con dos paneles de editor.
 
 En el primer arranque solo se **copian** `auth.json` y `config.toml` desde `%USERPROFILE%\.codex`. Home de Forge: `%USERPROFILE%\.forge\codex`.

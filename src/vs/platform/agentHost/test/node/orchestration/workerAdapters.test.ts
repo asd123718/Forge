@@ -27,7 +27,7 @@ suite('Forge worker adapters', () => {
 		assert.strictEqual(result.usage?.costUsd, 0.02);
 	});
 
-	test('requires API keys before resolving worker CLIs', () => {
+	test('requires API keys or credential files before resolving worker CLIs', () => {
 		assert.strictEqual(resolveDeepSeekCommand(process.cwd(), {}), undefined);
 		assert.strictEqual(resolveGrokCommand(process.cwd(), {}), undefined);
 		const deepseek = resolveDeepSeekCommand('/missing-root', { DEEPSEEK_API_KEY: 'k' } as NodeJS.ProcessEnv);
@@ -36,8 +36,8 @@ suite('Forge worker adapters', () => {
 		const grok = resolveGrokCommand('/missing-root', { XAI_API_KEY: 'k' } as NodeJS.ProcessEnv);
 		assert.ok(grok);
 		assert.ok(grok.command.includes('grok') || grok.command.endsWith('xai-grok-pager.exe') || grok.command.endsWith('xai-grok-pager'));
-		assert.ok(resolveGrokCommand('/missing-root', { FORGE_GROK_SIGNED_IN: '1' } as NodeJS.ProcessEnv));
-		assert.ok(resolveDeepSeekCommand('/missing-root', { FORGE_DEEPSEEK_SIGNED_IN: '1' } as NodeJS.ProcessEnv));
+		assert.strictEqual(resolveGrokCommand('/missing-root', { FORGE_GROK_SIGNED_IN: '1' } as NodeJS.ProcessEnv), undefined);
+		assert.strictEqual(resolveDeepSeekCommand('/missing-root', { FORGE_DEEPSEEK_SIGNED_IN: '1' } as NodeJS.ProcessEnv), undefined);
 	});
 
 	test('worker prompt asks for a structured summary, not a transcript', () => {

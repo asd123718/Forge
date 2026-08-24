@@ -9,6 +9,14 @@ import { join } from '../../../../base/common/path.js';
 import { isWindows } from '../../../../base/common/platform.js';
 import type { IWorkerProvider, IWorkerRunRequest, IWorkerTaskResult } from '../../common/orchestration/orchestrationTypes.js';
 import { DEEPSEEK_WORKER_PROVIDER_ID, GROK_WORKER_PROVIDER_ID } from '../../common/orchestration/orchestrationTypes.js';
+import {
+	deepSeekHarnessRoots,
+	grokBuildBinaryCandidates,
+	hasDeepSeekWorkerCredentials,
+	hasGrokWorkerCredentials,
+	isExecutablePath,
+	probeExecutable,
+} from './workerRuntime.js';
 
 export interface IProcessRunResult {
 	readonly exitCode: number;
@@ -119,6 +127,52 @@ function resolveSpawnCommand(command: string): { command: string; shell: boolean
 	return { command: `${command}.cmd`, shell: false };
 }
 
+function findDeepSeekHarnessRoot(repoRoot: string): string | undefined {
+	for (const candidate of deepSeekHarnessRoots(repoRoot)) {
+		if (existsSync(join(candidate, 'package.json'))) {
+			return candidate;
+		}
+	}
+	return undefined;
+}
+
+function findGrokBuildBinary(repoRoot: string): string | undefined {
+	for (const candidate of grokBuildBinaryCandidates(repoRoot)) {
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+	return undefined;
+}
+
+export function resolveDeepSeekCommand(repoRoot: string, env: NodeJS.ProcessEnv): { command: string; args: string[]; env: NodeJS.ProcessEnv } | undefined {
+	if (!hasDeepSeekWorkerCredentials(env)) {
+		return undefined;
+	}
+	const next = { ...env, DSH_PERMISSION_MODE: env.DSH_PERMISSION_MODE ?? 'workspace-write' };
+	const local = findDeepSeekHarnessRoot(repoRoot);
+	if (local) {
+		return { command: 'pnpm', args: ['--dir', local, 'dsh', '--profile', 'headless'], env: next };
+	}
+	return { command: 'npx', args: ['--yes', '@deepseek-ai/dsh', '--profile', 'headless'], env: next };
+}
+
+export function resolveGrokCommand(repoRoot: string, env: NodeJS.ProcessEnv): { command: string; prefixArgs: string[]; env: NodeJS.ProcessEnv } | undefined {
+	if (!hasGrokWorkerCredentials(env)) {
+		return undefined;
+	}
+	const next = {
+		...env,
+		GROK_DISABLE_AUTOUPDATER: '1',
+		GROK_MEMORY: '0',
+	};
+	const built = findGrokBuildBinary(repoRoot);
+	if (built) {
+		return { command: built, prefixArgs: [], env: next };
+	}
+	return { command: 'grok', prefixArgs: [], env: next };
+}
+
 export class DeepSeekHarnessWorker implements IWorkerProvider {
 	readonly id = DEEPSEEK_WORKER_PROVIDER_ID;
 	readonly label = 'DeepSeek Harness';
@@ -130,7 +184,18 @@ export class DeepSeekHarnessWorker implements IWorkerProvider {
 	) { }
 
 	async isAvailable(): Promise<boolean> {
-		return !!(await this._resolveCommand());
+		const resolved = await this._resolveCommand();
+		if (!resolved) {
+			return false;
+		}
+		if (resolved.command === 'pnpm') {
+			const localDir = resolved.args[1];
+			return !!localDir && existsSync(join(localDir, 'package.json'));
+		}
+		if (resolved.command === 'npx') {
+			return probeExecutable('npx', ['--version'], resolved.env);
+		}
+		return isExecutablePath(resolved.command);
 	}
 
 	async run(request: IWorkerRunRequest): Promise<IWorkerTaskResult> {
@@ -170,7 +235,14 @@ export class GrokBuildWorker implements IWorkerProvider {
 	) { }
 
 	async isAvailable(): Promise<boolean> {
-		return !!(await this._resolveCommand());
+		const resolved = await this._resolveCommand();
+		if (!resolved) {
+			return false;
+		}
+		if (isExecutablePath(resolved.command)) {
+			return true;
+		}
+		return probeExecutable(resolved.command, ['--version'], resolved.env);
 	}
 
 	async run(request: IWorkerRunRequest): Promise<IWorkerTaskResult> {
@@ -214,32 +286,4 @@ function unavailableResult(label: string, startedAt: number): IWorkerTaskResult 
 		error: `${label} is not installed or its API key is missing.`,
 		usage: { durationMs: Date.now() - startedAt },
 	};
-}
-
-export function resolveDeepSeekCommand(repoRoot: string, env: NodeJS.ProcessEnv): { command: string; args: string[]; env: NodeJS.ProcessEnv } | undefined {
-	if (!env.DEEPSEEK_API_KEY && env.FORGE_DEEPSEEK_SIGNED_IN !== '1') {
-		return undefined;
-	}
-	const local = join(repoRoot, '..', 'deepseek-harness-master');
-	const next = { ...env, DSH_PERMISSION_MODE: env.DSH_PERMISSION_MODE ?? 'workspace-write' };
-	if (existsSync(join(local, 'package.json'))) {
-		return { command: 'pnpm', args: ['--dir', local, 'dsh', '--profile', 'headless'], env: next };
-	}
-	return { command: 'npx', args: ['--yes', '@deepseek-ai/dsh', '--profile', 'headless'], env: next };
-}
-
-export function resolveGrokCommand(repoRoot: string, env: NodeJS.ProcessEnv): { command: string; prefixArgs: string[]; env: NodeJS.ProcessEnv } | undefined {
-	if (!env.XAI_API_KEY && !env.GROK_CODE_XAI_API_KEY && env.FORGE_GROK_SIGNED_IN !== '1') {
-		return undefined;
-	}
-	const built = join(repoRoot, '..', 'grok-build-main', 'target', 'release', isWindows ? 'xai-grok-pager.exe' : 'xai-grok-pager');
-	const next = {
-		...env,
-		GROK_DISABLE_AUTOUPDATER: '1',
-		GROK_MEMORY: '0',
-	};
-	if (existsSync(built)) {
-		return { command: built, prefixArgs: [], env: next };
-	}
-	return { command: 'grok', prefixArgs: [], env: next };
 }

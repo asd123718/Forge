@@ -22,13 +22,10 @@ import {
 	readOrchestrationState,
 	type IOrchestrationAssignment,
 	type IOrchestrationCommand,
-	type IOrchestrationRequest,
 	type IOrchestrationRunState,
 	type IOrchestrationTaskState,
 } from '../../../../platform/agentHost/common/orchestration/orchestrationTypes.js';
 import { IAgentHostService } from '../../../../platform/agentHost/common/agentService.js';
-import { ActionType } from '../../../../platform/agentHost/common/state/sessionActions.js';
-import { ROOT_STATE_URI, buildDefaultChatUri } from '../../../../platform/agentHost/common/state/sessionState.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
@@ -39,46 +36,23 @@ import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/
 import { IChatWidget, IChatWidgetService, isIChatViewViewContext } from '../../chat/browser/chat.js';
 import { IChatExecuteActionContext } from '../../chat/browser/actions/chatExecuteActions.js';
 import { CHAT_CATEGORY } from '../../chat/browser/actions/chatActions.js';
-import { toAgentHostBackendSessionUri } from '../../chat/browser/agentSessions/agentHost/agentHostSessionUri.js';
 import { ChatContextKeys } from '../../chat/common/actions/chatContextKeys.js';
 import { ICodexAccountService } from '../../../services/agentHost/browser/codexAccountService.js';
 import { getCodexRemainingPercent } from './forgeAccount.contribution.js';
 import { FORGE_WORK_MODE_SETTING_ID, readForgeWorkMode } from '../common/forgeWorkMode.js';
 import { FORGE_AGENT_SETUP_OPEN_ACTION_ID, FORGE_AGENT_SETUP_SETTING_ID, getAgentProfile, providerRefFromProfile, readForgeAgentSetup } from '../common/forgeAgentSetup.js';
+import {
+	buildDialecticOrchestrationRequest,
+	dispatchForgeRootConfig,
+	forgeRootConfigValues,
+	resolveDialecticAssignment,
+} from '../common/forgeOrchestrationRun.js';
 
 export const FORGE_ORCHESTRATE_ACTION_ID = 'forge.orchestration.run';
 export const FORGE_ORCHESTRATION_ASSIGN_ACTION_ID = 'forge.orchestration.assign';
 export const FORGE_ORCHESTRATION_COMMAND_ACTION_ID = 'forge.orchestration.command';
 
 const orchestrationBars = new WeakMap<IChatWidget, ForgeOrchestrationBar>();
-
-function dispatchRootConfig(agentHostService: IAgentHostService, patch: Record<string, unknown>): void {
-	agentHostService.dispatch(ROOT_STATE_URI, { type: ActionType.RootConfigChanged, config: patch });
-}
-
-function addressesFromWidget(widget: IChatWidget): { chatUri: string; sessionUri: string } {
-	const sessionResource = widget.viewModel?.sessionResource;
-	if (!sessionResource) {
-		return { chatUri: '', sessionUri: '' };
-	}
-	const backend = toAgentHostBackendSessionUri(sessionResource) ?? sessionResource;
-	return {
-		sessionUri: backend.toString(),
-		chatUri: buildDefaultChatUri(backend),
-	};
-}
-
-function workspacePath(workspaceContextService: IWorkspaceContextService): string | undefined {
-	return workspaceContextService.getWorkspace().folders[0]?.uri.fsPath;
-}
-
-function rootValues(agentHostService: IAgentHostService): Record<string, unknown> {
-	const state = agentHostService.rootState.value;
-	if (!state || state instanceof Error) {
-		return {};
-	}
-	return state.config?.values ?? {};
-}
 
 async function runOrchestration(accessor: ServicesAccessor, context?: IChatExecuteActionContext): Promise<void> {
 	const widget = context?.widget ?? accessor.get(IChatWidgetService).lastFocusedWidget;
@@ -94,21 +68,17 @@ async function runOrchestration(accessor: ServicesAccessor, context?: IChatExecu
 		notificationService.info(localize('forge.orchestration.needGoal', "先输入需求，再点编排。"));
 		return;
 	}
-	const workspace = workspacePath(workspaceContextService);
+	const workspace = workspaceContextService.getWorkspace().folders[0]?.uri.fsPath;
 	if (!workspace) {
 		notificationService.error(localize('forge.orchestration.noFolder', "先打开一个工作区文件夹。"));
 		return;
 	}
-	const addresses = addressesFromWidget(widget);
-	const request: IOrchestrationRequest = {
-		requestId: generateUuid(),
-		goal,
-		workspace,
-		...addresses,
-	};
+	const setup = readForgeAgentSetup(accessor.get(IConfigurationService).getValue(FORGE_AGENT_SETUP_SETTING_ID));
+	const assignment = resolveDialecticAssignment(agentHostService, setup);
+	const request = buildDialecticOrchestrationRequest(goal, workspace, widget, assignment);
 	widget.setInput('');
 	orchestrationBars.get(widget)?.closePicker();
-	dispatchRootConfig(agentHostService, { [FORGE_ORCHESTRATION_REQUEST_KEY]: request });
+	dispatchForgeRootConfig(agentHostService, { [FORGE_ORCHESTRATION_REQUEST_KEY]: request });
 }
 
 function toggleAssignmentPicker(accessor: ServicesAccessor, context?: IChatExecuteActionContext): void {
@@ -183,7 +153,7 @@ registerAction2(class extends Action2 {
 		if (!command?.type) {
 			return;
 		}
-		dispatchRootConfig(accessor.get(IAgentHostService), {
+		dispatchForgeRootConfig(accessor.get(IAgentHostService), {
 			[FORGE_ORCHESTRATION_COMMAND_KEY]: { ...command, commandId: generateUuid() },
 		});
 	}
@@ -298,7 +268,7 @@ class ForgeOrchestrationBar extends Disposable {
 	}
 
 	private _assignment(): IOrchestrationAssignment {
-		return readAssignment(rootValues(this._agentHostService)[FORGE_ORCHESTRATION_ASSIGNMENT_KEY]) ?? DEFAULT_ORCHESTRATION_ASSIGNMENT;
+		return readAssignment(forgeRootConfigValues(this._agentHostService)[FORGE_ORCHESTRATION_ASSIGNMENT_KEY]) ?? DEFAULT_ORCHESTRATION_ASSIGNMENT;
 	}
 
 	private _render(): void {
@@ -392,7 +362,7 @@ class ForgeOrchestrationBar extends Disposable {
 	}
 
 	private _saveAssignment(assignment: IOrchestrationAssignment): void {
-		dispatchRootConfig(this._agentHostService, { [FORGE_ORCHESTRATION_ASSIGNMENT_KEY]: assignment });
+		dispatchForgeRootConfig(this._agentHostService, { [FORGE_ORCHESTRATION_ASSIGNMENT_KEY]: assignment });
 	}
 
 	private _renderStatus(run: IOrchestrationRunState | undefined): void {

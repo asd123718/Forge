@@ -16,8 +16,6 @@ import { localize, localize2 } from '../../../../nls.js';
 import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { CODEX_MODELS_ROOT_CONFIG_KEY } from '../../../../platform/agentHost/common/codexModelsConfig.js';
-import { ActionType } from '../../../../platform/agentHost/common/state/sessionActions.js';
-import { ROOT_STATE_URI, buildDefaultChatUri } from '../../../../platform/agentHost/common/state/sessionState.js';
 import { IAgentHostService } from '../../../../platform/agentHost/common/agentService.js';
 import {
 	FORGE_ORCHESTRATION_ASSIGNMENT_KEY,
@@ -38,10 +36,16 @@ import { IWorkspaceContextService } from '../../../../platform/workspace/common/
 import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { IChatWidget, IChatWidgetService, isIChatViewViewContext } from '../../chat/browser/chat.js';
 import { CHAT_CATEGORY } from '../../chat/browser/actions/chatActions.js';
-import { toAgentHostBackendSessionUri } from '../../chat/browser/agentSessions/agentHost/agentHostSessionUri.js';
 import { ChatContextKeys } from '../../chat/common/actions/chatContextKeys.js';
 import { ILanguageModelsService } from '../../chat/common/languageModels.js';
 import { FORGE_WORK_MODE_SETTING_ID, readForgeWorkMode } from '../common/forgeWorkMode.js';
+import {
+	buildDialecticOrchestrationRequest,
+	dispatchForgeRootConfig,
+	forgeOrchestrationAddressesFromWidget,
+	forgeRootConfigValues,
+	resolveDialecticAssignment,
+} from '../common/forgeOrchestrationRun.js';
 import {
 	FORGE_AGENT_SETUP_OPEN_ACTION_ID,
 	FORGE_AGENT_SETUP_SETTING_ID,
@@ -167,8 +171,13 @@ class ForgeAgentSetupContribution extends Disposable {
 		}
 		const original = widget.acceptInput.bind(widget);
 		const wrapped: IChatWidget['acceptInput'] = async (query, options) => {
-			if (this._shouldRunLogosAgent()) {
+			const intercept = this._interceptedWorkMode();
+			if (intercept === 'logos') {
 				await this._runLogosAgent(widget, (query ?? widget.getInput()).trim());
+				return undefined;
+			}
+			if (intercept === 'dialectic') {
+				await this._runDialecticOrchestration(widget, (query ?? widget.getInput()).trim());
 				return undefined;
 			}
 			return original(query, options);
@@ -177,9 +186,15 @@ class ForgeAgentSetupContribution extends Disposable {
 		this._register({ dispose: () => { (widget as unknown as { acceptInput: IChatWidget['acceptInput'] }).acceptInput = original; } });
 	}
 
-	private _shouldRunLogosAgent(): boolean {
-		return readForgeWorkMode(this._configurationService.getValue(FORGE_WORK_MODE_SETTING_ID)) === 'logos'
-			&& readLogosAgent(this._configurationService.getValue(FORGE_LOGOS_AGENT_SETTING_ID)) !== 'codex';
+	private _interceptedWorkMode(): 'logos' | 'dialectic' | undefined {
+		const mode = readForgeWorkMode(this._configurationService.getValue(FORGE_WORK_MODE_SETTING_ID));
+		if (mode === 'dialectic') {
+			return 'dialectic';
+		}
+		if (mode === 'logos' && readLogosAgent(this._configurationService.getValue(FORGE_LOGOS_AGENT_SETTING_ID)) !== 'codex') {
+			return 'logos';
+		}
+		return undefined;
 	}
 
 	private async _runLogosAgent(widget: IChatWidget, goal: string): Promise<void> {
@@ -194,7 +209,7 @@ class ForgeAgentSetupContribution extends Disposable {
 		}
 		const setup = readForgeAgentSetup(this._configurationService.getValue(FORGE_AGENT_SETUP_SETTING_ID));
 		const assignment = logosAssignment(readLogosAgent(this._configurationService.getValue(FORGE_LOGOS_AGENT_SETTING_ID)), setup);
-		const addresses = addressesFromWidget(widget);
+		const addresses = forgeOrchestrationAddressesFromWidget(widget);
 		const request: IOrchestrationRequest = {
 			requestId: generateUuid(),
 			goal,
@@ -204,16 +219,33 @@ class ForgeAgentSetupContribution extends Disposable {
 			...addresses,
 		};
 		widget.setInput('');
-		dispatchRootConfig(this._agentHostService, { [FORGE_ORCHESTRATION_REQUEST_KEY]: request });
+		dispatchForgeRootConfig(this._agentHostService, { [FORGE_ORCHESTRATION_REQUEST_KEY]: request });
+	}
+
+	private async _runDialecticOrchestration(widget: IChatWidget, goal: string): Promise<void> {
+		if (!goal) {
+			this._notificationService.info(localize('forge.orchestration.needGoal', "先输入需求，再点编排。"));
+			return;
+		}
+		const workspace = this._workspaceContextService.getWorkspace().folders[0]?.uri.fsPath;
+		if (!workspace) {
+			this._notificationService.error(localize('forge.orchestration.noFolder', "先打开一个工作区文件夹。"));
+			return;
+		}
+		const setup = readForgeAgentSetup(this._configurationService.getValue(FORGE_AGENT_SETUP_SETTING_ID));
+		const assignment = resolveDialecticAssignment(this._agentHostService, setup);
+		const request = buildDialecticOrchestrationRequest(goal, workspace, widget, assignment);
+		widget.setInput('');
+		dispatchForgeRootConfig(this._agentHostService, { [FORGE_ORCHESTRATION_REQUEST_KEY]: request });
 	}
 
 	private _syncDialecticAssignment(): void {
-		const current = readAssignment(rootValues(this._agentHostService)[FORGE_ORCHESTRATION_ASSIGNMENT_KEY]);
+		const current = readAssignment(forgeRootConfigValues(this._agentHostService)['forge.orchestration.assignment']);
 		if (!current) {
 			return;
 		}
 		const setup = readForgeAgentSetup(this._configurationService.getValue(FORGE_AGENT_SETUP_SETTING_ID));
-		dispatchRootConfig(this._agentHostService, {
+		dispatchForgeRootConfig(this._agentHostService, {
 			[FORGE_ORCHESTRATION_ASSIGNMENT_KEY]: assignmentWithDialecticProfiles(current, setup),
 		});
 	}
@@ -504,30 +536,6 @@ class ForgeLogosAgentPickerActionViewItem extends BaseActionViewItem {
 		}
 		return store;
 	}
-}
-
-function dispatchRootConfig(agentHostService: IAgentHostService, patch: Record<string, unknown>): void {
-	agentHostService.dispatch(ROOT_STATE_URI, { type: ActionType.RootConfigChanged, config: patch });
-}
-
-function addressesFromWidget(widget: IChatWidget): { chatUri: string; sessionUri: string } {
-	const sessionResource = widget.viewModel?.sessionResource;
-	if (!sessionResource) {
-		return { chatUri: '', sessionUri: '' };
-	}
-	const backend = toAgentHostBackendSessionUri(sessionResource) ?? sessionResource;
-	return {
-		sessionUri: backend.toString(),
-		chatUri: buildDefaultChatUri(backend),
-	};
-}
-
-function rootValues(agentHostService: IAgentHostService): Record<string, unknown> {
-	const state = agentHostService.rootState.value;
-	if (!state || state instanceof Error) {
-		return {};
-	}
-	return state.config?.values ?? {};
 }
 
 registerWorkbenchContribution2(ForgeAgentSetupContribution.ID, ForgeAgentSetupContribution, WorkbenchPhase.AfterRestored);

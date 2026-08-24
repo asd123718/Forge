@@ -320,19 +320,25 @@ export class ForgeOrchestrationService extends Disposable {
 		this._publish();
 		const workspace = await openWorkerWorkspace(this._run.workspace, taskId);
 		try {
-			const worker = this._workers.get(task.workerProviderId);
+			const resolvedWorker = await this._resolveWorker(task);
 			let result: IWorkerTaskResult;
-			if (!worker || !(await worker.isAvailable())) {
+			if (!resolvedWorker.worker) {
 				result = {
 					status: 'failed',
 					summary: '',
 					changedFiles: [],
-					error: `${task.workerLabel} is unavailable. Install the runtime or set its API key.`,
+					error: resolvedWorker.error ?? `${task.workerLabel} is unavailable. Install the runtime or set its API key.`,
 					usage: { durationMs: 0 },
 				};
 			} else {
-				result = await worker.run({
-					task,
+				if (resolvedWorker.workerProviderId !== task.workerProviderId) {
+					this._updateTask(taskId, {
+						workerProviderId: resolvedWorker.workerProviderId,
+						workerLabel: resolvedWorker.workerLabel,
+					});
+				}
+				result = await resolvedWorker.worker.run({
+					task: { ...task, workerProviderId: resolvedWorker.workerProviderId, workerLabel: resolvedWorker.workerLabel },
 					workspace: workspace.path,
 					contract: this._run.contract ?? '',
 					goal: this._run.goal,
@@ -407,6 +413,29 @@ export class ForgeOrchestrationService extends Disposable {
 
 	private _workerRef(assignment: IOrchestrationAssignment, providerId: string) {
 		return assignment.workers.find(worker => worker.providerId === providerId) ?? { providerId, label: providerId, role: 'worker' as const };
+	}
+
+	private async _resolveWorker(task: IOrchestrationTaskState): Promise<{
+		worker: IWorkerProvider | undefined;
+		workerProviderId: string;
+		workerLabel: string;
+		error?: string;
+	}> {
+		const primary = this._workers.get(task.workerProviderId);
+		if (primary && await primary.isAvailable()) {
+			return { worker: primary, workerProviderId: primary.id, workerLabel: primary.label };
+		}
+		const codex = this._workers.get('codex');
+		if (task.workerProviderId !== 'codex' && codex && await codex.isAvailable()) {
+			this._logService.info(`[ForgeOrchestration] Falling back to Codex for task "${task.title}" (${task.workerProviderId} unavailable).`);
+			return { worker: codex, workerProviderId: codex.id, workerLabel: codex.label };
+		}
+		return {
+			worker: undefined,
+			workerProviderId: task.workerProviderId,
+			workerLabel: task.workerLabel,
+			error: `${task.workerLabel} is unavailable. Install the runtime or set its API key.`,
+		};
 	}
 
 	private _updateTask(taskId: string, patch: Partial<IOrchestrationTaskState>): void {
