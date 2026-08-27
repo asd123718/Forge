@@ -1,0 +1,111 @@
+{
+	"": [
+		"Forge Simplified Chinese language pack. Missing keys fall back to English."
+	],
+	"version": "1.0.0",
+	"contents": {
+		"vs/workbench/contrib/chat/browser/aiCustomization/agentGlobalConfigurationSettingsWidget": {
+			"agentSettings.unavailable": "当前无法从已连接的 Agent Host 读取这些设置。",
+			"agentSettings.models.title": "模型",
+			"agentSettings.models.description": "配置 Codex 可使用的模型提供商，包括云端 API 和本地 Ollama。",
+			"codex.configuration.title": "Codex",
+			"codex.configuration.description": "配置写入 config.toml 的 Codex 默认值。项目级和管理配置可以覆盖这些用户设置。",
+			"agentSettings.save": "保存",
+			"codex.configuration.appearance": "外观",
+			"codex.configuration.language": "语言",
+			"codex.configuration.language.description": "在中英文之间切换 Codex 设置。重启后语言包会应用到 Forge 的其余界面。",
+			"codex.configuration.file.title": "高级配置",
+			"codex.configuration.file.description": "打开 Codex 配置文件以自定义更多代理行为。",
+			"codex.configuration.file.docs": "Codex 配置文档",
+			"codex.configuration.file.open": "打开 config.toml",
+			"codex.configuration.personalization": "个性化",
+			"codex.configuration.review": "审查策略",
+			"codex.configuration.models.group": "模型",
+			"codex.configuration.personality": "个性",
+			"codex.configuration.autoReviewPolicy": "自动审查策略",
+			"codex.configuration.models": "模型",
+			"codex.configuration.personality.description": "控制 Codex 的默认沟通风格。选择 Default 时不会在 config.toml 中写入 personality。",
+			"codex.configuration.autoReviewPolicy.description": "更新 config.toml 中的 auto_review.policy。留空则删除 auto_review 段。",
+			"codex.configuration.models.description": "选择默认模型和提供商，并添加 Ollama 或其他 OpenAI 兼容接口。",
+			"codex.configuration.personality.default": "默认",
+			"codex.configuration.personality.friendly": "友好",
+			"codex.configuration.personality.pragmatic": "务实"
+		},
+		"vs/workbench/contrib/chat/browser/aiCustomization/agentModelsSettings": {
+			"codex.models.customProviders": "提供商",
+			"codex.models.customProviders.description": "新建提供商标签并保存。打开开关后，模型会出现在 Agent 的模型列表中。",
+			"codex.models.addProvider": "新建",
+			"codex.models.provider.untitled": "新提供商",
+			"codex.models.provider.enabled": "在 Agent 模型列表中显示此提供商",
+			"codex.models.provider.remove": "删除",
+			"codex.models.provider.kind": "模型提供商",
+			"codex.models.provider.group.local": "本地",
+			"codex.models.provider.group.cloud": "云端",
+			"codex.models.provider.modelName": "模型名称",
+			"codex.models.provider.modelName.placeholder": "例如 gpt-5.6",
+			"codex.models.ollama.loading": "正在检测 Ollama 模型...",
+			"codex.models.ollama.empty": "未检测到 Ollama 模型",
+			"codex.models.model.new": "新建",
+			"codex.models.model.save": "保存",
+			"codex.models.saved.empty": "还没有保存的模型。",
+			"codex.models.model.enabled": "在 Agent 模型列表中显示此模型",
+			"codex.models.provider.baseUrl": "提供商网址",
+			"codex.models.provider.baseUrl.placeholder": "https://api.example.com/v1",
+			"codex.models.provider.apiKey": "API 密钥",
+			"codex.models.provider.apiKey.placeholder": "请输入 API 密钥",
+			"codex.models.provider.apiKey.required": "请填写 {0} 的 API 密钥。",
+			"codex.models.provider.id.invalid": "提供商内部标识只能包含字母、数字、下划线和连字符。",
+			"codex.models.provider.id.duplicate": "提供商“{0}”重复了。",
+			"codex.models.provider.baseUrl.required": "请填写 {0} 的提供商网址。",
+			"codex.models.provider.baseUrl.invalid": "请为 {0} 输入有效的 HTTP 或 HTTPS 网址。"
+		},
+		"vs/platform/agentHost/node/codex/codexProviderConfiguration": {
+			"codex.configuration.title": "Codex",
+			"codex.configuration.description": "配置写入 config.toml 的 Codex 默认值。项目级和管理配置可以覆盖这些用户设置。",
+			"codex.configuration.personality": "个性",
+			"codex.configuration.personality.description": "控制 Codex 的默认沟通风格。选择 Default 时不会在 config.toml 中写入 personality。",
+			"codex.configuration.personality.default": "默认",
+			"codex.configuration.personality.friendly": "友好",
+			"codex.configuration.personality.pragmatic": "务实",
+			"codex.configuration.autoReviewPolicy": "自动审查策略",
+			"codex.configuration.autoReviewPolicy.description": "更新 config.toml 中的 auto_review.policy。留空则删除 auto_review 段。",
+			"codex.configuration.models": "模型",
+			"codex.configuration.models.description": "选择默认模型和提供商，并添加 Ollama 或其他 OpenAI 兼容接口。",
+			"codex.configuration.models.group": "模型",
+			"codex.configuration.personalization": "个性化",
+			"codex.configuration.review": "审查策略",
+			"codex.configuration.review.save": "保存策略",
+			"codex.configuration.file.title": "高级配置",
+			"codex.configuration.file.description": "打开 Codex 配置文件以自定义更多代理行为。",
+			"codex.configuration.file.open": "打开 config.toml",
+			"codex.configuration.file.docs": "Codex 配置文档"
+		},
+		"vs/sessions/contrib/providers/agentHost/browser/codexCustomizationSettings.contribution": {
+			"codexCustomizationSettings.navigationLabel": "Codex",
+			"codexCustomizationSettings.navigationDescription": "配置此 Agent 的全局行为。",
+			"codexModelsSettings.navigationLabel": "模型",
+			"codexModelsSettings.navigationDescription": "配置 Codex 模型提供商和 API 密钥。"
+		},
+		"vs/workbench/contrib/chat/electron-browser/codexCustomizationSettings.contribution": {
+			"codexCustomizationSettings.navigationLabel": "Codex",
+			"codexCustomizationSettings.navigationDescription": "配置此 Agent 的全局行为。",
+			"codexModelsSettings.navigationLabel": "模型",
+			"codexModelsSettings.navigationDescription": "配置 Codex 模型提供商和 API 密钥。"
+		},
+		"vs/workbench/contrib/localization/common/localizationsActions": {
+			"configureLocale": "配置显示语言",
+			"configureLocaleDescription": "根据已安装的语言包更改显示语言。",
+			"chooseLocale": "选择显示语言",
+			"installed": "已安装",
+			"available": "可用"
+		},
+		"vs/workbench/services/localization/electron-browser/localeService": {
+			"restartDisplayLanguageMessage1": "要切换到 {1}，需要重启 {0} 吗？",
+			"restartDisplayLanguageDetail1": "要将显示语言更改为 {0}，{1} 需要重启。",
+			"restart": "&&重启",
+			"installing": "正在安装 {0} 语言支持...",
+			"argvInvalid": "无法写入显示语言。请打开运行时设置，修正错误后再试。",
+			"openArgv": "打开运行时设置"
+		}
+	}
+}

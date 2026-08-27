@@ -1,0 +1,32 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.forge-startup-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 10000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--vscode-editor-background);
+	opacity: 1;
+	transition: opacity 220ms ease-out;
+}
+
+.forge-startup-overlay.forge-startup-dismissed {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.forge-startup-overlay .forge-startup-icon.codicon {
+	font-size: 112px;
+	color: var(--vscode-foreground);
+	animation: forge-startup-pulse 1s ease-in-out infinite;
+}
+
+@keyframes forge-startup-pulse {
+	0%, 100% { opacity: 0.4; transform: scale(0.95); }
+	50% { opacity: 1; transform: scale(1.05); }
+}

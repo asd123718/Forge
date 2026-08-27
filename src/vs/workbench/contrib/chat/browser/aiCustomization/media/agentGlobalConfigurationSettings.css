@@ -1,0 +1,750 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.agent-global-configuration-settings {
+	height: 100%;
+	overflow: auto;
+	scrollbar-color: var(--vscode-scrollbarSlider-background) var(--vscode-editor-background);
+	scrollbar-width: thin;
+}
+
+.agent-global-configuration-settings::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+.agent-global-configuration-settings::-webkit-scrollbar-track {
+	background: var(--vscode-editor-background);
+}
+
+.agent-global-configuration-settings::-webkit-scrollbar-thumb {
+	min-height: 36px;
+	border: 2px solid var(--vscode-editor-background);
+	border-radius: 8px;
+	background: var(--vscode-scrollbarSlider-background);
+	background-clip: padding-box;
+}
+
+.agent-global-configuration-settings::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+	background-clip: padding-box;
+}
+
+.agent-global-configuration-settings::-webkit-scrollbar-thumb:active {
+	background: var(--vscode-scrollbarSlider-activeBackground);
+	background-clip: padding-box;
+}
+
+.agent-global-configuration-settings-content {
+	box-sizing: border-box;
+	max-width: 720px;
+	margin: 0 auto;
+	padding: var(--vscode-spacing-size320) var(--vscode-spacing-size280) var(--vscode-spacing-size400);
+}
+
+.agent-global-configuration-settings-content h1 {
+	font-size: 24px;
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 32px;
+	margin: 0 0 var(--vscode-spacing-size40);
+}
+
+.agent-global-configuration-settings-intro,
+.agent-global-configuration-settings-section-description,
+.agent-global-configuration-settings-description {
+	color: var(--vscode-descriptionForeground);
+}
+
+.agent-global-configuration-settings-intro {
+	font-size: var(--vscode-fontSize-body1);
+	line-height: 20px;
+	margin: 0 0 var(--vscode-spacing-size240);
+}
+
+.agent-global-configuration-settings-section {
+	margin-top: var(--vscode-spacing-size240);
+}
+
+.agent-global-configuration-settings-section h2 {
+	font-size: 15px;
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 22px;
+	margin: 0 0 var(--vscode-spacing-size20);
+}
+
+.agent-global-configuration-settings-section-description {
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 18px;
+	margin: 0 0 var(--vscode-spacing-size100);
+}
+
+.agent-global-configuration-settings-section-description:empty {
+	display: none;
+}
+
+.agent-global-configuration-settings-card {
+	border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+	border-radius: var(--vscode-cornerRadius-small);
+	overflow: hidden;
+}
+
+.agent-global-configuration-settings-permissions-card {
+	padding: var(--vscode-spacing-size80);
+}
+
+.agent-global-configuration-settings-permissions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size80);
+}
+
+.agent-global-configuration-settings-permission {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	width: 100%;
+	margin: 0;
+	padding: var(--vscode-spacing-size100) var(--vscode-spacing-size120);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+	border-radius: var(--vscode-cornerRadius-small);
+	background: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	text-align: left;
+	cursor: pointer;
+	font-family: inherit;
+}
+
+.agent-global-configuration-settings-permission:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.agent-global-configuration-settings-permission.selected {
+	border-color: var(--vscode-focusBorder);
+	background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+	box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.agent-global-configuration-settings-permission.danger.selected {
+	border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-charts-orange));
+	box-shadow: inset 0 0 0 1px var(--vscode-inputValidation-warningBorder, var(--vscode-charts-orange));
+}
+
+.agent-global-configuration-settings-permission-title {
+	font-size: var(--vscode-fontSize-body1);
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 19px;
+}
+
+.agent-global-configuration-settings-permission-description {
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 17px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.agent-global-configuration-settings-row {
+	display: flex;
+	align-items: center;
+	box-sizing: border-box;
+	min-height: 54px;
+	padding: var(--vscode-spacing-size100) var(--vscode-spacing-size120);
+	gap: var(--vscode-spacing-size160);
+}
+
+.agent-global-configuration-settings-row + .agent-global-configuration-settings-row,
+.agent-global-configuration-settings-row + .agent-global-configuration-settings-text-row,
+.agent-global-configuration-settings-text-row + .agent-global-configuration-settings-row,
+.agent-global-configuration-settings-text-row + .agent-global-configuration-settings-text-row {
+	border-top: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+}
+
+.agent-global-configuration-settings-labels {
+	min-width: 0;
+	flex: 1;
+}
+
+.agent-global-configuration-settings-label {
+	font-size: var(--vscode-fontSize-body1);
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 19px;
+}
+
+.agent-global-configuration-settings-description {
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 17px;
+}
+
+.agent-global-configuration-settings-action,
+.agent-global-configuration-settings-select,
+.agent-global-configuration-settings-checkbox,
+.agent-global-configuration-settings-input {
+	margin-left: auto;
+	flex: none;
+}
+
+.agent-global-configuration-settings-select,
+.agent-global-configuration-settings-input {
+	box-sizing: border-box;
+	width: 168px;
+}
+
+.agent-global-configuration-settings-select .monaco-select-box {
+	width: 100%;
+	min-height: 26px;
+	padding: var(--vscode-spacing-size20) var(--vscode-spacing-size240) var(--vscode-spacing-size20) var(--vscode-spacing-size80);
+}
+
+.agent-global-configuration-settings-input,
+.agent-global-configuration-settings-text {
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: var(--vscode-cornerRadius-xSmall);
+	outline: none;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-family: inherit;
+	font-size: var(--vscode-fontSize-label1);
+}
+
+.agent-global-configuration-settings-input {
+	height: 26px;
+	padding: var(--vscode-spacing-size20) var(--vscode-spacing-size80);
+	transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.agent-global-configuration-settings-text-row {
+	display: block;
+	padding: var(--vscode-spacing-size120);
+}
+
+.agent-global-configuration-settings-text {
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+	min-height: 76px;
+	margin-top: var(--vscode-spacing-size80);
+	padding: var(--vscode-spacing-size60) var(--vscode-spacing-size80);
+	resize: vertical;
+	line-height: 18px;
+}
+
+.agent-global-configuration-settings-input:focus,
+.agent-global-configuration-settings-text:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+.agent-global-configuration-settings-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: var(--vscode-spacing-size80);
+}
+
+.agent-global-configuration-settings-actions .monaco-button {
+	flex: none;
+	width: auto;
+}
+
+.agent-global-configuration-settings-status {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--vscode-spacing-size80);
+	padding: var(--vscode-spacing-size120);
+	color: var(--vscode-descriptionForeground);
+	line-height: 18px;
+}
+
+.agent-global-configuration-settings-status.error .codicon {
+	color: var(--vscode-errorForeground);
+}
+
+.agent-global-configuration-settings.narrow .agent-global-configuration-settings-content {
+	padding: var(--vscode-spacing-size240) var(--vscode-spacing-size160) var(--vscode-spacing-size400);
+}
+
+.agent-global-configuration-settings.narrow .agent-global-configuration-settings-row {
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+
+.agent-global-configuration-settings.narrow .agent-global-configuration-settings-select,
+.agent-global-configuration-settings.narrow .agent-global-configuration-settings-input {
+	width: 100%;
+	margin-left: 0;
+}
+
+/* Models section */
+.agent-global-configuration-settings-models-content {
+	max-width: 880px;
+}
+
+.agent-global-configuration-settings-models-section {
+	margin-top: 0;
+}
+
+.agent-global-configuration-settings-models-card {
+	overflow: visible;
+	border: 0;
+	background: transparent;
+}
+
+.agent-global-configuration-settings-models {
+	padding: 0;
+}
+
+.agent-global-configuration-settings-models .agent-global-configuration-settings-row {
+	padding: 0;
+	min-height: 0;
+	margin-bottom: var(--vscode-spacing-size100);
+}
+
+.agent-models-settings {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size240);
+}
+
+.agent-models-panel {
+	box-sizing: border-box;
+	padding: var(--vscode-spacing-size160);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+	border-radius: var(--vscode-cornerRadius-medium);
+	background: var(--vscode-editorWidget-background, transparent);
+	transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.agent-models-panel-header {
+	margin-bottom: var(--vscode-spacing-size140);
+}
+
+.agent-models-panel-title,
+.agent-models-providers-title {
+	font-size: 15px;
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 22px;
+}
+
+.agent-models-panel-description,
+.agent-models-providers-description,
+.agent-models-provider-subtitle,
+.agent-models-providers-empty-description,
+.agent-models-actions-hint {
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 18px;
+}
+
+.agent-models-fields {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--vscode-spacing-size160);
+}
+
+.agent-models-field {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--vscode-spacing-size60);
+}
+
+.agent-models-field-labels {
+	min-width: 0;
+}
+
+.agent-models-field-label,
+.agent-models-provider-field-label {
+	font-size: var(--vscode-fontSize-body1);
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 19px;
+}
+
+.agent-models-field-description {
+	margin-top: var(--vscode-spacing-size20);
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 17px;
+}
+
+.agent-models-field .agent-global-configuration-settings-input {
+	width: 100%;
+	height: 30px;
+	margin-left: 0;
+}
+
+.agent-models-providers {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size120);
+}
+
+.agent-models-providers-header {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--vscode-spacing-size160);
+}
+
+.agent-models-providers-copy {
+	min-width: 0;
+}
+
+.agent-models-providers-header .monaco-button {
+	flex: none;
+	width: auto;
+}
+
+.agent-models-switch {
+	position: relative;
+	flex: none;
+	width: 36px;
+	height: 20px;
+	padding: 0;
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+	border-radius: 999px;
+	background: var(--vscode-input-background, transparent);
+	cursor: pointer;
+}
+
+.agent-models-switch[aria-checked="true"] {
+	background: var(--vscode-button-background);
+	border-color: var(--vscode-button-background);
+}
+
+.agent-models-switch::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: var(--vscode-button-foreground, #fff);
+	transition: left 120ms ease;
+}
+
+.agent-models-switch[aria-checked="true"]::after {
+	left: 18px;
+}
+
+.agent-models-model-rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size100);
+}
+
+.agent-models-model-row .agent-models-model-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--vscode-spacing-size80);
+}
+
+.agent-models-model-input {
+	flex: 1 1 220px;
+	min-width: 0;
+}
+
+.agent-models-model-controls .monaco-button {
+	flex: none;
+	width: auto;
+}
+
+.agent-models-saved-models {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size60);
+}
+
+.agent-models-saved-empty {
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+}
+
+.agent-models-saved-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--vscode-spacing-size80);
+}
+
+.agent-models-saved-name {
+	overflow: hidden;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.agent-models-providers-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size120);
+}
+
+.agent-models-providers-empty {
+	padding: var(--vscode-spacing-size240);
+	border: 1px dashed var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+	border-radius: var(--vscode-cornerRadius-medium);
+	text-align: center;
+}
+
+.agent-models-providers-empty-title {
+	margin-bottom: var(--vscode-spacing-size20);
+	font-size: var(--vscode-fontSize-body1);
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 19px;
+}
+
+.agent-models-provider {
+	overflow: hidden;
+	border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+	border-radius: var(--vscode-cornerRadius-medium);
+	background: var(--vscode-editorWidget-background, transparent);
+	transform-origin: 50% 40%;
+	transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.agent-models-model-row {
+	transform-origin: 50% 40%;
+}
+
+.agent-models-layout-moving {
+	will-change: transform;
+	z-index: 0;
+}
+
+.agent-models-enter-pending {
+	opacity: 0;
+}
+
+.agent-models-provider.agent-models-enter,
+.agent-models-model-row.agent-models-enter {
+	z-index: 1;
+	overflow: visible;
+	animation: agent-models-pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes agent-models-pop-in {
+	from {
+		opacity: 0.7;
+		transform: scale(0.08);
+	}
+
+	72% {
+		opacity: 1;
+		transform: scale(1.025);
+	}
+
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+.agent-models-provider:hover {
+	border-color: var(--vscode-input-border, var(--vscode-widget-border));
+}
+
+.agent-models-provider-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--vscode-spacing-size160);
+	padding: var(--vscode-spacing-size120) var(--vscode-spacing-size160);
+	border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+	background: var(--vscode-sideBarSectionHeader-background, transparent);
+}
+
+.agent-models-provider-identity {
+	min-width: 0;
+}
+
+.agent-models-provider-title {
+	overflow: hidden;
+	font-size: var(--vscode-fontSize-body1);
+	font-weight: var(--vscode-fontWeight-semiBold);
+	line-height: 19px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.agent-models-provider-subtitle {
+	margin-top: 2px;
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 16px;
+}
+
+.agent-models-provider-locked {
+	display: flex;
+	align-items: center;
+	min-height: 26px;
+	padding: 0 8px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: var(--vscode-cornerRadius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-descriptionForeground);
+}
+
+.agent-models-provider-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--vscode-spacing-size80);
+	flex: none;
+}
+
+.agent-models-provider-header .monaco-button,
+.agent-models-provider-actions .monaco-button {
+	flex: none;
+	width: auto;
+}
+
+.agent-models-provider-fields {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--vscode-spacing-size140) var(--vscode-spacing-size160);
+	padding: var(--vscode-spacing-size160);
+}
+
+.agent-models-provider-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--vscode-spacing-size60);
+	min-width: 0;
+}
+
+.agent-models-provider-field-wide {
+	grid-column: 1 / -1;
+}
+
+.agent-models-provider-field .agent-global-configuration-settings-input {
+	width: 100%;
+	height: 30px;
+	margin-left: 0;
+	box-sizing: border-box;
+}
+
+.agent-models-provider-field .agent-global-configuration-settings-input:hover {
+	border-color: var(--vscode-inputOption-hoverBorder, var(--vscode-input-border, var(--vscode-focusBorder)));
+}
+
+.agent-models-provider-select {
+	width: 100%;
+	height: 30px;
+}
+
+.agent-models-provider-select .monaco-select-box {
+	box-sizing: border-box;
+	height: 30px;
+	padding: var(--vscode-spacing-size20) var(--vscode-spacing-size240) var(--vscode-spacing-size20) var(--vscode-spacing-size80);
+	font-family: inherit;
+	font-size: var(--vscode-fontSize-label1);
+	transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.agent-models-provider-select .monaco-select-box:hover {
+	border-color: var(--vscode-inputOption-hoverBorder, var(--vscode-input-border, var(--vscode-focusBorder))) !important;
+}
+
+.agent-models-provider-select .monaco-select-box:focus {
+	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.agent-models-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--vscode-spacing-size160);
+	padding-top: var(--vscode-spacing-size160);
+	border-top: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+}
+
+.agent-models-actions .monaco-button {
+	flex: none;
+	width: auto;
+}
+
+.agent-models-error {
+	padding: var(--vscode-spacing-size80) var(--vscode-spacing-size100);
+	border: 1px solid var(--vscode-inputValidation-errorBorder);
+	border-radius: var(--vscode-cornerRadius-xSmall);
+	background: var(--vscode-inputValidation-errorBackground);
+	color: var(--vscode-inputValidation-errorForeground);
+	font-size: var(--vscode-fontSize-label1);
+	line-height: 18px;
+}
+
+.agent-global-configuration-settings.narrow .agent-models-fields,
+.agent-global-configuration-settings.narrow .agent-models-provider-fields {
+	grid-template-columns: 1fr;
+}
+
+.agent-global-configuration-settings.narrow .agent-models-provider-field-wide {
+	grid-column: auto;
+}
+
+.agent-global-configuration-settings.narrow .agent-models-providers-header,
+.agent-global-configuration-settings.narrow .agent-models-actions {
+	align-items: stretch;
+	flex-direction: column;
+}
+
+.agent-global-configuration-settings.narrow .agent-models-model-row .agent-models-model-controls {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.agent-global-configuration-settings.narrow .agent-models-model-controls .monaco-button,
+.agent-global-configuration-settings.narrow .agent-models-providers-header .monaco-button,
+.agent-global-configuration-settings.narrow .agent-models-actions .monaco-button {
+	width: 100%;
+}
+
+/* SelectBox context views are mounted outside the Models container. Keep the
+ * transition global and subtle so all settings dropdowns behave consistently. */
+.monaco-select-box-dropdown-container.visible {
+	transform-origin: top center;
+	animation: agent-models-dropdown-enter 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.monaco-select-box-dropdown-container .monaco-list-row {
+	transition: background-color 80ms ease, color 80ms ease;
+}
+
+@keyframes agent-models-dropdown-enter {
+	from {
+		opacity: 0;
+		transform: translateY(-3px) scaleY(0.98);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0) scaleY(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.agent-models-provider,
+	.agent-models-model-row,
+	.monaco-select-box-dropdown-container.visible {
+		animation: none;
+	}
+
+	.agent-models-enter-pending {
+		opacity: 1;
+	}
+
+	.agent-global-configuration-settings-input,
+	.agent-models-panel,
+	.agent-models-provider,
+	.agent-models-model-row,
+	.agent-models-provider-select .monaco-select-box,
+	.monaco-select-box-dropdown-container .monaco-list-row {
+		transition: none;
+	}
+}
