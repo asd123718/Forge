@@ -38,7 +38,7 @@ import { readyTaskIds } from '../../common/orchestration/taskGraph.js';
 import { IAgentConfigurationService } from '../agentConfigurationService.js';
 import { CodexLeaderProvider, CodexWorkerProvider, LocalLeaderProvider } from './codexLeader.js';
 import { createDeepSeekLeader, createGrokLeader } from './cliLeader.js';
-import { IAgentHostStateManager } from '../agentHostStateManager.js';
+import { IAgentHostStateManager, type AgentHostStateManager } from '../agentHostStateManager.js';
 import { createNodeProcessRunner, DeepSeekHarnessWorker, GrokBuildWorker, resolveDeepSeekCommand, resolveGrokCommand } from './workerAdapters.js';
 import { openWorkerWorkspace } from './workerWorkspace.js';
 import { CODEX_MODELS_ROOT_CONFIG_KEY, normalizeCodexModelsConfig } from '../../common/codexModelsConfig.js';
@@ -65,7 +65,7 @@ export class ForgeOrchestrationService extends Disposable {
 
 	constructor(
 		@IAgentConfigurationService private readonly _configuration: IAgentConfigurationService,
-		@IAgentHostStateManager stateManager: IAgentHostStateManager,
+		@IAgentHostStateManager stateManager: AgentHostStateManager,
 		@ILogService private readonly _logService: ILogService,
 		@INativeEnvironmentService environment: INativeEnvironmentService,
 	) {
@@ -130,7 +130,9 @@ export class ForgeOrchestrationService extends Disposable {
 			}
 			this._lastCommandId = typed.commandId ?? `${typed.type}:${typed.taskId ?? ''}`;
 			this._configuration.updateRootConfig({ [FORGE_ORCHESTRATION_COMMAND_KEY]: { consumed: this._lastCommandId } });
-			void this.command(typed);
+			void this.command(typed).catch(error => {
+				this._logService.error(`[ForgeOrchestration] command failed: ${error instanceof Error ? error.message : String(error)}`);
+			});
 		}
 	}
 
@@ -144,6 +146,7 @@ export class ForgeOrchestrationService extends Disposable {
 			: stored ?? request.assignment ?? DEFAULT_ORCHESTRATION_ASSIGNMENT;
 		this._run = {
 			runId: generateUuid(),
+			mode: request.mode ?? 'dialectic',
 			status: request.mode === 'logos' ? 'running' : 'planning',
 			goal: request.goal,
 			chatUri: request.chatUri,
@@ -156,6 +159,7 @@ export class ForgeOrchestrationService extends Disposable {
 			updatedAt: Date.now(),
 			usage: emptyUsage(),
 		};
+		const runId = this._run.runId;
 		this._publish();
 		try {
 			this._activeLeader = this._leaderFor(assignment);
@@ -172,6 +176,9 @@ export class ForgeOrchestrationService extends Disposable {
 				workers: assignment.workers,
 				hooks: this._transcriptHooks(planEntryId),
 			}, this._abort.signal);
+			if (!this._isCurrentRun(runId) || this._abort.signal.aborted) {
+				return this._run;
+			}
 			this._completeTranscript(planEntryId, plan.summary, 'completed');
 			this._run = {
 				...this._run,
@@ -182,23 +189,16 @@ export class ForgeOrchestrationService extends Disposable {
 				updatedAt: Date.now(),
 			};
 			this._publish();
-			await this._pump(this._abort.signal);
+			await this._pump(runId, this._abort.signal);
 			if (this._run.status === 'cancelled' || this._run.status === 'paused') {
 				return this._run;
 			}
-			this._run = { ...this._run, status: 'reviewing', updatedAt: Date.now() };
-			this._publish();
-			const reviewEntryId = this._beginTranscript('leader-review', assignment.leader.label, '审核');
-			const review = await this._activeLeader.review(this._run, this._abort.signal, this._transcriptHooks(reviewEntryId));
-			this._completeTranscript(reviewEntryId, review, 'completed');
-			this._run = { ...this._run, status: 'completed', review, updatedAt: Date.now(), usage: this._sumUsage(this._run.tasks) };
-			this._publish();
-			return this._run;
+			return await this._finalizeRun(runId, this._abort.signal);
 		} catch (error) {
-			if (this._run) {
+			if (this._run && this._isCurrentRun(runId)) {
 				this._run = {
 					...this._run,
-					status: this._abort?.signal.aborted ? 'cancelled' : 'failed',
+					status: this._paused ? 'paused' : this._abort?.signal.aborted ? 'cancelled' : 'failed',
 					error: error instanceof Error ? error.message : String(error),
 					updatedAt: Date.now(),
 				};
@@ -221,7 +221,22 @@ export class ForgeOrchestrationService extends Disposable {
 		}
 		if (command.type === 'pause') {
 			this._paused = true;
-			this._run = { ...this._run, status: 'paused', updatedAt: Date.now() };
+			this._abort?.abort();
+			this._run = {
+				...this._run,
+				status: 'paused',
+				transcript: (this._run.transcript ?? []).map(entry => entry.status === 'running' ? {
+					...entry,
+					status: 'failed',
+					output: 'Paused',
+				} : entry),
+				tasks: this._run.tasks.map(task => task.status === 'running' ? {
+					...task,
+					status: 'queued',
+					attempt: Math.max(0, task.attempt - 1),
+				} : task),
+				updatedAt: Date.now(),
+			};
 			this._publish();
 			return;
 		}
@@ -230,7 +245,16 @@ export class ForgeOrchestrationService extends Disposable {
 			this._abort = new AbortController();
 			this._run = { ...this._run, status: 'running', updatedAt: Date.now() };
 			this._publish();
-			await this._pump(this._abort.signal);
+			const runId = this._run.runId;
+			if (this._run.mode !== 'logos' && this._run.tasks.length === 0) {
+				if (!await this._resumePlanning(runId, this._abort.signal)) {
+					return;
+				}
+			}
+			await this._pump(runId, this._abort.signal);
+			if (this._isCurrentRun(runId) && this._run.status !== 'paused' && this._run.status !== 'cancelled') {
+				await this._finalizeContinuation(runId, this._abort.signal);
+			}
 			return;
 		}
 		if (!command.taskId) {
@@ -241,16 +265,25 @@ export class ForgeOrchestrationService extends Disposable {
 			return;
 		}
 		if (command.type === 'retry') {
-			this._updateTask(task.id, { status: 'queued', error: undefined });
+			this._updateTask(task.id, { status: 'queued', attempt: 0, result: undefined, error: undefined });
 			this._paused = false;
 			this._abort = new AbortController();
 			this._run = { ...this._run, status: 'running', updatedAt: Date.now() };
 			this._publish();
-			await this._pump(this._abort.signal);
+			const runId = this._run.runId;
+			await this._pump(runId, this._abort.signal);
+			if (this._isCurrentRun(runId) && this._run.status !== 'paused' && this._run.status !== 'cancelled') {
+				await this._finalizeContinuation(runId, this._abort.signal);
+			}
 			return;
 		}
 		if (command.type === 'escalate') {
-			await this._escalate(task, this._abort?.signal ?? new AbortController().signal);
+			const runId = this._run.runId;
+			await this._escalate(task, runId, this._abort?.signal ?? new AbortController().signal);
+			if (this._isCurrentRun(runId) && this._run.status !== 'paused' && this._run.status !== 'cancelled') {
+				await this._pump(runId, this._abort?.signal ?? new AbortController().signal);
+				await this._finalizeContinuation(runId, this._abort?.signal ?? new AbortController().signal);
+			}
 			return;
 		}
 		if (command.type === 'reassign' && command.workerProviderId) {
@@ -264,7 +297,15 @@ export class ForgeOrchestrationService extends Disposable {
 				workerLabel: worker.label,
 				workerModel: worker.model,
 			});
+			this._paused = false;
+			this._abort = new AbortController();
+			this._run = { ...this._run, status: 'running', updatedAt: Date.now() };
 			this._publish();
+			const runId = this._run.runId;
+			await this._pump(runId, this._abort.signal);
+			if (this._isCurrentRun(runId) && this._run.status !== 'paused' && this._run.status !== 'cancelled') {
+				await this._finalizeContinuation(runId, this._abort.signal);
+			}
 		}
 	}
 
@@ -295,24 +336,16 @@ export class ForgeOrchestrationService extends Disposable {
 			updatedAt: Date.now(),
 		};
 		this._publish();
-		await this._pump(abort);
+		const runId = this._run.runId;
+		await this._pump(runId, abort);
 		if (this._run.status === 'cancelled' || this._run.status === 'paused') {
 			return this._run;
 		}
-		const failed = this._run.tasks.some(task => task.status === 'failed');
-		this._run = {
-			...this._run,
-			status: failed ? 'failed' : 'completed',
-			error: failed ? this._run.tasks.find(task => task.error)?.error : undefined,
-			updatedAt: Date.now(),
-			usage: this._sumUsage(this._run.tasks),
-		};
-		this._publish();
-		return this._run;
+		return this._finalizeLogos(runId);
 	}
 
-	private async _pump(abort: AbortSignal): Promise<void> {
-		while (this._run && !this._paused && !abort.aborted) {
+	private async _pump(runId: string, abort: AbortSignal): Promise<void> {
+		while (this._run && this._isCurrentRun(runId) && !this._paused && !abort.aborted) {
 			const completed = new Set(this._run.tasks.filter(task => task.status === 'completed' || task.status === 'escalated').map(task => task.id));
 			const blocked = new Set(this._run.tasks.filter(task => task.status === 'running' || task.status === 'cancelled').map(task => task.id));
 			const ready = readyTaskIds(this._run.tasks, completed, blocked)
@@ -324,20 +357,24 @@ export class ForgeOrchestrationService extends Disposable {
 				}
 				return;
 			}
-			await Promise.all(ready.map(id => this._runTask(id, abort)));
+			await Promise.all(ready.map(id => this._runTask(id, runId, abort)));
 		}
 	}
 
-	private async _runTask(taskId: string, abort: AbortSignal): Promise<void> {
+	private async _runTask(taskId: string, runId: string, abort: AbortSignal): Promise<void> {
 		const task = this._run?.tasks.find(candidate => candidate.id === taskId);
-		if (!task || !this._run) {
+		if (!task || !this._run || !this._isCurrentRun(runId)) {
 			return;
 		}
 		this._updateTask(taskId, { status: 'running', attempt: task.attempt + 1 });
 		this._publish();
 		const workerEntryId = this._beginTranscript('worker', task.workerLabel, task.title, task.id);
-		const workspace = await openWorkerWorkspace(this._run.workspace, taskId);
+		let workspace: Awaited<ReturnType<typeof openWorkerWorkspace>> | undefined;
 		try {
+			workspace = await openWorkerWorkspace(this._run.workspace, taskId);
+			if (!this._isCurrentRun(runId) || abort.aborted) {
+				return;
+			}
 			const resolvedWorker = await this._resolveWorker(task);
 			let result: IWorkerTaskResult;
 			if (!resolvedWorker.worker) {
@@ -380,12 +417,16 @@ export class ForgeOrchestrationService extends Disposable {
 					hooks: this._transcriptHooks(workerEntryId),
 				});
 			}
-			if (abort.aborted) {
-				this._updateTask(taskId, { status: 'cancelled' });
-				this._completeTranscript(workerEntryId, 'Cancelled', 'failed');
+			if (abort.aborted || !this._isCurrentRun(runId)) {
+				if (this._isCurrentRun(runId)) {
+					this._updateTask(taskId, { status: this._paused ? 'queued' : 'cancelled', attempt: this._paused ? task.attempt : task.attempt + 1 });
+				}
+				if (this._isCurrentRun(runId)) {
+					this._completeTranscript(workerEntryId, 'Cancelled', 'failed');
+				}
 				return;
 			}
-			const merged = await workspace.mergeInto(this._run.workspace);
+			const merged = result.status === 'completed' ? await workspace.mergeInto(this._run.workspace) : [];
 			result = { ...result, changedFiles: uniquePaths([...result.changedFiles, ...merged]) };
 			this._completeTranscript(workerEntryId, result.summary || result.error || '', result.status === 'completed' ? 'completed' : 'failed');
 			if (result.status === 'completed') {
@@ -393,30 +434,186 @@ export class ForgeOrchestrationService extends Disposable {
 			} else if (task.attempt + 1 < MAX_TASK_ATTEMPTS) {
 				this._updateTask(taskId, { status: 'retry', result, error: result.error });
 			} else {
-				await this._escalate({ ...task, result, error: result.error, attempt: task.attempt + 1 }, abort);
+				await this._escalate({ ...task, result, error: result.error, attempt: task.attempt + 1 }, runId, abort);
 				return;
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			this._updateTask(taskId, { status: 'failed', error: message });
-			this._completeTranscript(workerEntryId, message, 'failed');
+			if (this._isCurrentRun(runId)) {
+				this._updateTask(taskId, { status: abort.aborted && this._paused ? 'queued' : 'failed', attempt: abort.aborted && this._paused ? task.attempt : task.attempt + 1, error: message });
+			}
+			if (this._isCurrentRun(runId)) {
+				this._completeTranscript(workerEntryId, message, 'failed');
+			}
 		} finally {
-			await workspace.dispose();
-			this._publish();
+			await workspace?.dispose();
+			if (this._isCurrentRun(runId)) {
+				this._publish();
+			}
 		}
 	}
 
-	private async _escalate(task: IOrchestrationTaskState, abort: AbortSignal): Promise<void> {
-		if (!this._run) {
+	private async _escalate(task: IOrchestrationTaskState, runId: string, abort: AbortSignal): Promise<void> {
+		if (!this._run || !this._isCurrentRun(runId)) {
 			return;
 		}
-		this._updateTask(task.id, { status: 'escalated' });
+		this._updateTask(task.id, { status: 'running' });
 		this._publish();
 		const entryId = this._beginTranscript('leader-implement', this._run.assignment.leader.label, task.title, task.id);
-		const result = await this._activeLeader.implement(task, this._run.workspace, this._run.contract ?? '', abort, this._run, this._transcriptHooks(entryId));
-		this._completeTranscript(entryId, result.summary || result.error || '', result.status === 'completed' ? 'completed' : 'failed');
-		this._updateTask(task.id, { status: result.status === 'completed' ? 'escalated' : 'failed', result, error: result.error });
+		let workspace: Awaited<ReturnType<typeof openWorkerWorkspace>> | undefined;
+		try {
+			workspace = await openWorkerWorkspace(this._run.workspace, `${task.id}-leader`);
+			let result = await this._activeLeader.implement(task, workspace.path, this._run.contract ?? '', abort, this._run, this._transcriptHooks(entryId));
+			if (!this._isCurrentRun(runId) || abort.aborted) {
+				return;
+			}
+			const merged = result.status === 'completed' ? await workspace.mergeInto(this._run.workspace) : [];
+			result = { ...result, changedFiles: uniquePaths([...result.changedFiles, ...merged]) };
+			this._completeTranscript(entryId, result.summary || result.error || '', result.status === 'completed' ? 'completed' : 'failed');
+			this._updateTask(task.id, { status: result.status === 'completed' ? 'escalated' : 'failed', result, error: result.error });
+			this._publish();
+		} catch (error) {
+			if (this._isCurrentRun(runId)) {
+				const message = error instanceof Error ? error.message : String(error);
+				const interrupted = abort.aborted || this._run?.status === 'paused' || this._run?.status === 'cancelled';
+				this._completeTranscript(entryId, interrupted ? (this._paused ? 'Paused' : 'Cancelled') : message, 'failed');
+				if (!interrupted) {
+					this._updateTask(task.id, { status: 'failed', error: message });
+				}
+				this._publish();
+			}
+		} finally {
+			await workspace?.dispose();
+		}
+	}
+
+	private async _finalizeRun(runId: string, abort: AbortSignal): Promise<IOrchestrationRunState> {
+		if (!this._run) {
+			throw new Error('Orchestration run disappeared before finalization.');
+		}
+		if (!this._isCurrentRun(runId) || this._run.status === 'paused' || this._run.status === 'cancelled' || abort.aborted) {
+			return this._run;
+		}
+		const blocked = this._run.tasks.filter(task => task.status === 'queued' || task.status === 'retry' || task.status === 'running');
+		if (blocked.length > 0) {
+			const blockedIds = new Set(blocked.map(task => task.id));
+			for (const task of blocked) {
+				const dependencies = task.dependsOn.filter(dependency => blockedIds.has(dependency) || this._run?.tasks.some(candidate => candidate.id === dependency && candidate.status === 'failed'));
+				this._updateTask(task.id, {
+					status: 'failed',
+					error: dependencies.length > 0
+						? `Task could not run because its dependencies did not complete: ${dependencies.join(', ')}`
+						: 'Task could not run because the orchestration plan contains a dependency cycle or invalid state.',
+				});
+			}
+		}
+		this._run = { ...this._run, status: 'reviewing', updatedAt: Date.now() };
 		this._publish();
+		const reviewEntryId = this._beginTranscript('leader-review', this._run.assignment.leader.label, '审核');
+		let review: string;
+		try {
+			review = await this._activeLeader.review(this._run, abort, this._transcriptHooks(reviewEntryId));
+		} catch (error) {
+			if (!this._isCurrentRun(runId) || abort.aborted || this._run.status === 'paused' || this._run.status === 'cancelled') {
+				return this._run;
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			this._completeTranscript(reviewEntryId, message, 'failed');
+			this._run = { ...this._run, status: 'failed', error: `Leader review failed: ${message}`, updatedAt: Date.now() };
+			this._publish();
+			return this._run;
+		}
+		if (!this._isCurrentRun(runId) || abort.aborted) {
+			return this._run;
+		}
+		this._completeTranscript(reviewEntryId, review, 'completed');
+		const failed = this._run.tasks.filter(task => task.status === 'failed' || task.status === 'cancelled');
+		this._run = {
+			...this._run,
+			status: failed.length > 0 ? 'failed' : 'completed',
+			review,
+			error: failed.length > 0 ? `${failed.length} orchestration task(s) failed: ${failed.map(task => task.title).join(', ')}` : undefined,
+			updatedAt: Date.now(),
+			usage: this._sumUsage(this._run.tasks),
+		};
+		this._publish();
+		return this._run;
+	}
+
+	private async _resumePlanning(runId: string, abort: AbortSignal): Promise<boolean> {
+		if (!this._run || !this._isCurrentRun(runId)) {
+			return false;
+		}
+		const assignment = this._run.assignment;
+		this._activeLeader = this._leaderFor(assignment);
+		this._run = { ...this._run, status: 'planning', error: undefined, updatedAt: Date.now() };
+		this._publish();
+		const planEntryId = this._beginTranscript('leader-plan', assignment.leader.label, '规划');
+		try {
+			const plan = await this._activeLeader.plan({
+				goal: this._run.goal,
+				workspace: this._run.workspace,
+				chatUri: this._run.chatUri,
+				sessionUri: this._run.sessionUri,
+				leader: assignment.leader,
+				workers: assignment.workers,
+				hooks: this._transcriptHooks(planEntryId),
+			}, abort);
+			if (!this._isCurrentRun(runId) || abort.aborted) {
+				return false;
+			}
+			this._completeTranscript(planEntryId, plan.summary, 'completed');
+			this._run = {
+				...this._run,
+				status: 'running',
+				planSummary: plan.summary,
+				contract: plan.contract,
+				tasks: plan.tasks.map((task, index) => this._toTaskState(task, assignment, index)),
+				updatedAt: Date.now(),
+			};
+			this._publish();
+			return true;
+		} catch (error) {
+			if (this._isCurrentRun(runId)) {
+				const message = error instanceof Error ? error.message : String(error);
+				this._completeTranscript(planEntryId, message, 'failed');
+				this._run = {
+					...this._run,
+					status: this._paused ? 'paused' : abort.aborted ? 'cancelled' : 'failed',
+					error: message,
+					updatedAt: Date.now(),
+				};
+				this._publish();
+			}
+			return false;
+		}
+	}
+
+	private async _finalizeContinuation(runId: string, abort: AbortSignal): Promise<IOrchestrationRunState> {
+		if (!this._run || !this._isCurrentRun(runId)) {
+			throw new Error('Orchestration run disappeared before finalization.');
+		}
+		return this._run.mode === 'logos' ? this._finalizeLogos(runId) : this._finalizeRun(runId, abort);
+	}
+
+	private _finalizeLogos(runId: string): IOrchestrationRunState {
+		if (!this._run || !this._isCurrentRun(runId)) {
+			throw new Error('Logos run disappeared before finalization.');
+		}
+		const failed = this._run.tasks.some(task => task.status === 'failed' || task.status === 'cancelled');
+		this._run = {
+			...this._run,
+			status: failed ? 'failed' : 'completed',
+			error: failed ? this._run.tasks.find(task => task.error)?.error ?? 'The Logos task failed.' : undefined,
+			updatedAt: Date.now(),
+			usage: this._sumUsage(this._run.tasks),
+		};
+		this._publish();
+		return this._run;
+	}
+
+	private _isCurrentRun(runId: string): boolean {
+		return this._run?.runId === runId;
 	}
 
 	private _toTaskState(task: IOrchestrationPlan['tasks'][number], assignment: IOrchestrationAssignment, index: number): IOrchestrationTaskState {
@@ -609,14 +806,15 @@ export class ForgeOrchestrationService extends Disposable {
 	private _transcriptHooks(entryId: string): IOrchestrationProgressHooks {
 		return {
 			onProgress: update => {
-				if (!this._run) {
+				if (!this._run || !(this._run.transcript ?? []).some(entry => entry.id === entryId)) {
 					return;
 				}
 				this._run = {
 					...this._run,
 					transcript: (this._run.transcript ?? []).map(entry => entry.id === entryId ? {
 						...entry,
-						thinking: update.thinking,
+						thinking: update.thinking ?? entry.thinking,
+						progress: update.progress ?? entry.progress,
 						output: update.output ?? entry.output,
 					} : entry),
 					updatedAt: Date.now(),
@@ -627,7 +825,7 @@ export class ForgeOrchestrationService extends Disposable {
 	}
 
 	private _completeTranscript(entryId: string, output: string, status: 'completed' | 'failed'): void {
-		if (!this._run) {
+		if (!this._run || !(this._run.transcript ?? []).some(entry => entry.id === entryId)) {
 			return;
 		}
 		this._run = {

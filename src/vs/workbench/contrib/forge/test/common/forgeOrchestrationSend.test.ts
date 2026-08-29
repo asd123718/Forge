@@ -13,7 +13,6 @@ import type { IConfigurationService } from '../../../../../platform/configuratio
 import type { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
 import type { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import type { IChatWidget } from '../../../chat/browser/chat.js';
-import { ChatRequestParser } from '../../../chat/common/requestParser/chatRequestParser.js';
 import {
 	clearDialecticOrchestrationPending,
 	isDialecticOrchestrationPending,
@@ -66,7 +65,7 @@ suite('Forge orchestration send', () => {
 			getValue: () => ({}),
 		} as unknown as IConfigurationService;
 		const instantiationService = {
-			createInstance: () => new ChatRequestParser(),
+			createInstance: () => ({ parseChatRequest: (_resource: URI, text: string) => ({ text, parts: [] }) }),
 		} as unknown as IInstantiationService;
 		const notificationService = {
 			info: (message: string) => notifications.push(message),
@@ -120,7 +119,7 @@ suite('Forge orchestration send', () => {
 			agentHostService: { dispatch: () => undefined, rootState: { value: { config: { values: {} } } } } as unknown as IAgentHostService,
 			configurationService: { getValue: () => ({}) } as unknown as IConfigurationService,
 			setup: { logos: {}, dialectic: {} },
-			instantiationService: { createInstance: () => new ChatRequestParser() } as unknown as IInstantiationService,
+			instantiationService: { createInstance: () => ({ parseChatRequest: (_resource: URI, text: string) => ({ text, parts: [] }) }) } as unknown as IInstantiationService,
 			notificationService: {
 				info: (message: string) => notifications.push(message),
 				error: (message: string) => notifications.push(message),

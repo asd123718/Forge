@@ -9,3 +9,6 @@ ThirdPartyNotices.txt eol=crlf
 *.sh eol=lf
 *.rtf -text
 **/*.json linguist-language=jsonc
+
+# Bundled console Node runtime for the no-install portable source launcher
+resources/forge-runtime/win32-x64/node.exe filter=lfs diff=lfs merge=lfs -text

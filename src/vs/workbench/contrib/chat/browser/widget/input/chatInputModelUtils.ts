@@ -19,6 +19,16 @@ interface IModelSelectionContext {
 }
 
 /**
+ * Whether the composer currently has something it can submit. A pending
+ * programmatic preference is deliberately not part of this decision: when a
+ * fallback model is already available, waiting for a preferred model must not
+ * lock the send action forever.
+ */
+export function isChatInputContentSendable(hasContent: boolean, hasNoAvailableModel: boolean): boolean {
+	return hasContent && !hasNoAvailableModel;
+}
+
+/**
  * Filter models based on session type.
  * When a session has a specific type (and it's not 'local'), only models targeting that
  * session type are returned. Otherwise, general-purpose models are returned.

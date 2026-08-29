@@ -34,6 +34,7 @@ import { DiagnosticsService } from '../../platform/diagnostics/node/diagnosticsS
 import { NativeParsedArgs } from '../../platform/environment/common/argv.js';
 import { EnvironmentMainService, IEnvironmentMainService } from '../../platform/environment/electron-main/environmentMainService.js';
 import { addArg, parseMainProcessArgv } from '../../platform/environment/node/argvHelper.js';
+import { writeForgeStartupLog } from '../../platform/environment/node/forgeStartupLog.js';
 import { createWaitMarkerFileSync } from '../../platform/environment/node/wait.js';
 import { IFileService } from '../../platform/files/common/files.js';
 import { FileService } from '../../platform/files/common/fileService.js';
@@ -177,6 +178,7 @@ class CodeMain {
 		const environmentMainService = new EnvironmentMainService(this.resolveArgs(), productService);
 		const instanceEnvironment = this.patchEnvironment(environmentMainService); // Patch `process.env` with the instance's environment
 		services.set(IEnvironmentMainService, environmentMainService);
+		writeForgeStartupLog(environmentMainService.logsHome, productService);
 
 		// Logger
 		const loggerService = new LoggerMainService(getLogLevel(environmentMainService), environmentMainService.logsHome);

@@ -38,6 +38,21 @@ jobs:
       - name: Compile client
         run: npm run compile-client
 
+      - name: Typecheck client
+        run: npm run typecheck-client
+
+      - name: Forge orchestration tests
+        run: npm run test-node -- --runGlob "vs/platform/agentHost/test/**/orchestration/*.test.js"
+
+      - name: Forge workbench contract tests
+        run: npm run test-node -- --runGlob "vs/workbench/contrib/forge/test/common/*.test.js"
+
+      - name: Forge account tests
+        run: npm run test-node -- --run src/vs/workbench/services/agentHost/test/browser/codexAccountService.test.ts
+
+      - name: Streaming edit preview tests
+        run: npm run test-browser -- --browser chromium --run src/vs/sessions/contrib/changes/test/browser/streamingEditPreview.test.ts
+
       - name: Codex observer tests
         run: npm run test-node -- --run src/vs/platform/agentHost/test/node/codexFileEditObserver.test.ts
 

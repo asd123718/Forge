@@ -30,3 +30,19 @@
 	0%, 100% { opacity: 0.4; transform: scale(0.95); }
 	50% { opacity: 1; transform: scale(1.05); }
 }
+
+.monaco-workbench.monaco-reduce-motion .forge-startup-overlay,
+.monaco-workbench.monaco-reduce-motion .forge-startup-overlay .forge-startup-icon.codicon {
+	transition-duration: 0s;
+	animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.forge-startup-overlay {
+		transition-duration: 0s;
+	}
+
+	.forge-startup-overlay .forge-startup-icon.codicon {
+		animation: none;
+	}
+}

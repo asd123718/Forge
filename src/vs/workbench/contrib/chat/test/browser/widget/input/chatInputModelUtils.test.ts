@@ -16,6 +16,7 @@ import {
 	findDefaultModel,
 	getAgentHostByokManageModelsIdentifier,
 	hasModelsTargetingSession,
+	isChatInputContentSendable,
 	isModelHiddenInPicker,
 	isModelSupportedForInlineChat,
 	resolveEditedRequestSelection,
@@ -111,6 +112,17 @@ function createVendorModel(
 }
 
 suite('ChatInputModelUtils', () => {
+	test('sendability depends on content and a usable model, not a pending preferred model', () => {
+		assert.deepStrictEqual({
+			textWithFallback: isChatInputContentSendable(true, false),
+			textWithoutAnyModel: isChatInputContentSendable(true, true),
+			emptyWithFallback: isChatInputContentSendable(false, false),
+		}, {
+			textWithFallback: true,
+			textWithoutAnyModel: false,
+			emptyWithFallback: false,
+		});
+	});
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 

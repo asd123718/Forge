@@ -9,7 +9,6 @@ import { localize } from '../../../../nls.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { IAgentHostService } from '../../../../platform/agentHost/common/agentService.js';
 import {
-	FORGE_ORCHESTRATION_STATE_KEY,
 	readOrchestrationState,
 	type IOrchestrationRunState,
 	type IOrchestrationTranscriptEntry,
@@ -17,14 +16,15 @@ import {
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { IChatWidget, IChatWidgetService, isIChatViewViewContext } from '../../chat/browser/chat.js';
-import type { IChatRequestModel } from '../../chat/common/model/chatModel.js';
+import { ChatModel, type ChatRequestModel } from '../../chat/common/model/chatModel.js';
 import { ChatRequestParser } from '../../chat/common/requestParser/chatRequestParser.js';
-import { forgeOrchestrationAddressesFromWidget, forgeRootConfigValues, orchestrationRunMatchesWidget } from '../common/forgeOrchestrationRun.js';
+import { forgeRootConfigValues, orchestrationRunMatchesWidget } from '../common/forgeOrchestrationRun.js';
 
 interface IWidgetMirrorState {
 	runId?: string;
 	entryRequestIds: Map<string, string>;
 	thinkingSynced: Map<string, number>;
+	progressSynced: Map<string, number>;
 	completed: Set<string>;
 }
 
@@ -60,12 +60,13 @@ class ForgeOrchestrationChatContribution extends Disposable {
 		this._mirrorByWidget.set(widget, {
 			entryRequestIds: new Map(),
 			thinkingSynced: new Map(),
+			progressSynced: new Map(),
 			completed: new Set(),
 		});
 	}
 
 	private _syncAll(): void {
-		const run = readOrchestrationState(forgeRootConfigValues(this._agentHostService)[FORGE_ORCHESTRATION_STATE_KEY]);
+		const run = readOrchestrationState(forgeRootConfigValues(this._agentHostService));
 		for (const widget of this._chatWidgetService.getAllWidgets()) {
 			if (!isIChatViewViewContext(widget.viewContext)) {
 				continue;
@@ -84,7 +85,7 @@ class ForgeOrchestrationChatContribution extends Disposable {
 	private _syncRun(widget: IChatWidget, run: IOrchestrationRunState): void {
 		const model = widget.viewModel?.model;
 		const mirror = this._mirrorByWidget.get(widget);
-		if (!model || !mirror) {
+		if (!(model instanceof ChatModel) || !mirror) {
 			return;
 		}
 		try {
@@ -92,6 +93,7 @@ class ForgeOrchestrationChatContribution extends Disposable {
 				mirror.runId = run.runId;
 				mirror.entryRequestIds.clear();
 				mirror.thinkingSynced.clear();
+				mirror.progressSynced.clear();
 				mirror.completed.clear();
 			}
 			for (const entry of run.transcript ?? []) {
@@ -102,7 +104,7 @@ class ForgeOrchestrationChatContribution extends Disposable {
 		}
 	}
 
-	private _syncEntry(model: NonNullable<IChatWidget['viewModel']>['model'], mirror: IWidgetMirrorState, entry: IOrchestrationTranscriptEntry): void {
+	private _syncEntry(model: ChatModel, mirror: IWidgetMirrorState, entry: IOrchestrationTranscriptEntry): void {
 		const request = this._ensureEntryRequest(model, mirror, entry);
 		if (!request) {
 			return;
@@ -118,8 +120,18 @@ class ForgeOrchestrationChatContribution extends Disposable {
 			model.acceptResponseProgress(request, { kind: 'thinking', value: entry.thinking.slice(synced), id: entry.id }, true);
 			mirror.thinkingSynced.set(entry.id, entry.thinking.length);
 		}
+		const progressSynced = mirror.progressSynced.get(entry.id) ?? 0;
+		if ((entry.progress?.length ?? 0) > progressSynced) {
+			model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString(entry.progress!.slice(progressSynced)) });
+			mirror.progressSynced.set(entry.id, entry.progress!.length);
+		}
 		if (entry.status !== 'running' && !mirror.completed.has(entry.id)) {
-			const output = entry.output?.trim() || entry.thinking.trim();
+			const streamedThinking = entry.thinking.trim();
+			const streamedProgress = entry.progress?.trim();
+			const completedOutput = entry.output?.trim();
+			const output = completedOutput && completedOutput !== streamedThinking && completedOutput !== streamedProgress
+				? completedOutput
+				: (!streamedThinking && !streamedProgress ? completedOutput : undefined);
 			if (output) {
 				model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString(output) });
 			}
@@ -129,14 +141,14 @@ class ForgeOrchestrationChatContribution extends Disposable {
 		}
 	}
 
-	private _ensureEntryRequest(model: NonNullable<IChatWidget['viewModel']>['model'], mirror: IWidgetMirrorState, entry: IOrchestrationTranscriptEntry): IChatRequestModel | undefined {
+	private _ensureEntryRequest(model: ChatModel, mirror: IWidgetMirrorState, entry: IOrchestrationTranscriptEntry): ChatRequestModel | undefined {
 		const existingId = mirror.entryRequestIds.get(entry.id);
 		if (existingId) {
 			return model.getRequests().find(candidate => candidate.id === existingId);
 		}
 		const parser = this._instantiationService.createInstance(ChatRequestParser);
 		const label = transcriptLabel(entry);
-		const request = model.addRequest(parser.parseChatRequest(model.sessionResource, label), { variables: [] }, 0, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, entry.id, true, label);
+		const request = model.addRequest(parser.parseChatRequest(model.sessionResource, label), { variables: [] }, 0, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, entry.id, true, label);
 		mirror.entryRequestIds.set(entry.id, request.id);
 		return request;
 	}

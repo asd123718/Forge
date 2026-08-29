@@ -56,6 +56,19 @@ class ForgeStartupContribution extends Disposable {
 		const minimumDuration = timeout(MINIMUM_SPLASH_DURATION);
 		try {
 			await this._lifecycleService.when(LifecyclePhase.Restored);
+			void this._prepareCodexChat();
+		} catch (error) {
+			this._logService.warn(`[ForgeStartup] Workbench restore failed: ${error instanceof Error ? error.message : String(error)}`);
+		} finally {
+			await minimumDuration;
+			this._overlay.classList.add('forge-startup-dismissed');
+			this._overlay.setAttribute('aria-busy', 'false');
+			this._register(disposableTimeout(() => this._overlay.remove(), 220));
+		}
+	}
+
+	private async _prepareCodexChat(): Promise<void> {
+		try {
 			const codexReady = await this._waitForCodexRegistration();
 			if (codexReady) {
 				await this._openCodexChat();
@@ -64,11 +77,6 @@ class ForgeStartupContribution extends Disposable {
 			}
 		} catch (error) {
 			this._logService.warn(`[ForgeStartup] Failed to prepare the Codex side bar: ${error instanceof Error ? error.message : String(error)}`);
-		} finally {
-			await minimumDuration;
-			this._overlay.classList.add('forge-startup-dismissed');
-			this._overlay.setAttribute('aria-busy', 'false');
-			this._register(disposableTimeout(() => this._overlay.remove(), 220));
 		}
 	}
 

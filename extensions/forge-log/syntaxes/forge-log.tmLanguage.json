@@ -1,0 +1,77 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Forge Diagnostic Log",
+  "scopeName": "text.forge-log",
+  "patterns": [
+    { "include": "#headers" },
+    { "include": "#boundaries" },
+    { "include": "#errors" },
+    { "include": "#user" },
+    { "include": "#assistant" },
+    { "include": "#reasoning" },
+    { "include": "#tools" },
+    { "include": "#files" },
+    { "include": "#time" },
+    { "include": "#ids" },
+    { "include": "#keys" }
+  ],
+  "repository": {
+    "headers": {
+      "patterns": [
+        { "match": "^#.*$", "name": "markup.heading.forge-log" }
+      ]
+    },
+    "boundaries": {
+      "patterns": [
+        { "match": "^@@(?:BEGIN|END|DELTA)\\b.*$", "name": "keyword.control.forge-log" }
+      ]
+    },
+    "errors": {
+      "patterns": [
+        { "match": "\\b(?:ERROR|FAILED|FAILURE|UNHANDLED_REJECTION|DENIED|<redacted>)\\b", "name": "invalid.illegal.forge-log" }
+      ]
+    },
+    "user": {
+      "patterns": [
+        { "match": "\\b(?:USER|UI\\.CLICK|COMMAND\\.(?:WILL|DID))\\b", "name": "markup.bold.forge-log" }
+      ]
+    },
+    "assistant": {
+      "patterns": [
+        { "match": "\\b(?:ASSISTANT|TURN\\.(?:START|COMPLETE|CANCELLED))\\b", "name": "markup.italic.forge-log" }
+      ]
+    },
+    "reasoning": {
+      "patterns": [
+        { "match": "\\b(?:REASONING-SUMMARY|REASONING-PUBLISHED|REASONING)\\b", "name": "comment.block.documentation.forge-log" }
+      ]
+    },
+    "tools": {
+      "patterns": [
+        { "match": "\\b(?:TOOL|APPROVAL|COMMAND|TERMINAL|CODEX\\.RPC)(?:\\.[A-Z_]+)*\\b", "name": "entity.name.function.forge-log" }
+      ]
+    },
+    "files": {
+      "patterns": [
+        { "match": "\\bFILE\\.(?:CREATE|WRITE|MODIFY|MOVE|RENAME|COPY)\\b", "name": "markup.inserted.forge-log" },
+        { "match": "\\bFILE\\.DELETE\\b", "name": "markup.deleted.forge-log" }
+      ]
+    },
+    "time": {
+      "patterns": [
+        { "match": "\\b\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}[:\\-]\\d{2}[:\\-]\\d{2}\\.\\d{3}(?: [+-]\\d{2}:\\d{2})?", "name": "constant.numeric.datetime.forge-log" },
+        { "match": "\\+\\d+ms\\b", "name": "constant.numeric.elapsed.forge-log" }
+      ]
+    },
+    "ids": {
+      "patterns": [
+        { "match": "\\bR-[A-Za-z0-9_-]+-\\d+\\b", "name": "constant.language.event-id.forge-log" }
+      ]
+    },
+    "keys": {
+      "patterns": [
+        { "match": "(?<![A-Za-z0-9_.-])[A-Za-z][A-Za-z0-9_.-]*(?==)", "name": "variable.other.key.forge-log" }
+      ]
+    }
+  }
+}

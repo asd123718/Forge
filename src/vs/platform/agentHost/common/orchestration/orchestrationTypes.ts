@@ -164,11 +164,13 @@ export interface IOrchestrationTranscriptEntry {
 	readonly taskId?: string;
 	readonly status: 'running' | 'completed' | 'failed';
 	readonly thinking: string;
+	/** Plain provider/process progress. Never render this as model reasoning. */
+	readonly progress?: string;
 	readonly output?: string;
 }
 
 export interface IOrchestrationProgressHooks {
-	onProgress?(update: { thinking: string; output?: string }): void;
+	onProgress?(update: { thinking?: string; progress?: string; output?: string }): void;
 }
 
 export interface IOrchestrationTaskState {
@@ -197,6 +199,8 @@ export interface IOrchestrationTaskState {
 
 export interface IOrchestrationRunState {
 	readonly runId: string;
+	/** Kept optional so persisted runs from older Forge builds remain readable. */
+	readonly mode?: 'dialectic' | 'logos';
 	readonly status: OrchestrationRunStatus;
 	readonly goal: string;
 	readonly chatUri: string;

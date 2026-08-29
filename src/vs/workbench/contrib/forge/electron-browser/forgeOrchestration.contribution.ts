@@ -15,8 +15,6 @@ import {
 	FORGE_ORCHESTRATION_AGENTS,
 	FORGE_ORCHESTRATION_ASSIGNMENT_KEY,
 	FORGE_ORCHESTRATION_COMMAND_KEY,
-	FORGE_ORCHESTRATION_REQUEST_KEY,
-	FORGE_ORCHESTRATION_STATE_KEY,
 	isActiveOrchestrationStatus,
 	readOrchestrationState,
 	type IOrchestrationAssignment,
@@ -165,7 +163,7 @@ class ForgeOrchestrationContribution extends Disposable {
 		restore();
 		this._register(this._agentHostService.rootState.onDidChange(() => {
 			restore();
-			const run = readOrchestrationState(forgeRootConfigValues(this._agentHostService)[FORGE_ORCHESTRATION_STATE_KEY]);
+			const run = readOrchestrationState(forgeRootConfigValues(this._agentHostService));
 			if (run) {
 				clearDialecticOrchestrationPending();
 			}
@@ -174,7 +172,7 @@ class ForgeOrchestrationContribution extends Disposable {
 			if (event.commandId !== CancelChatActionId) {
 				return;
 			}
-			const run = readOrchestrationState(forgeRootConfigValues(this._agentHostService)[FORGE_ORCHESTRATION_STATE_KEY]);
+			const run = readOrchestrationState(forgeRootConfigValues(this._agentHostService));
 			cancelForgeOrchestration(this._agentHostService, run?.runId);
 			const widget = this._chatWidgetService.lastFocusedWidget;
 			if (widget) {
@@ -215,6 +213,8 @@ class ForgeOrchestrationBar extends Disposable {
 		this._register({ dispose: () => orchestrationBars.delete(_widget) });
 		this._host = $('.forge-orch-host');
 		this._status = append(this._host, $('.forge-orch'));
+		this._status.setAttribute('role', 'status');
+		this._status.setAttribute('aria-live', 'polite');
 		this._picker = append(this._host, $('.forge-orch-picker'));
 		this._assign = append(this._host, $('button.forge-orch-assign', { type: 'button' }));
 		this._picker.setAttribute('role', 'dialog');
@@ -236,6 +236,7 @@ class ForgeOrchestrationBar extends Disposable {
 		this._register(addDisposableListener(win, 'keydown', e => {
 			if (e.key === 'Escape' && this._pickerOpen) {
 				this.closePicker();
+				this._assign.focus();
 			}
 		}));
 		this._render();
@@ -244,6 +245,9 @@ class ForgeOrchestrationBar extends Disposable {
 	togglePicker(): void {
 		this._pickerOpen = !this._pickerOpen;
 		this._render();
+		if (this._pickerOpen) {
+			queueMicrotask(() => this._picker.querySelector<HTMLButtonElement>('button')?.focus());
+		}
 	}
 
 	closePicker(): void {
@@ -295,10 +299,11 @@ class ForgeOrchestrationBar extends Disposable {
 		if (!dialectic) {
 			this._pickerOpen = false;
 		}
+		const visibleRun = matchesWidget && run && (dialectic || isActiveOrchestrationStatus(run.status)) ? run : undefined;
 		this._renderAssign(assignment);
 		this._renderPicker(assignment);
-		this._renderStatus(matchesWidget ? run : undefined);
-		this._host.style.display = dialectic || (matchesWidget && run) ? '' : 'none';
+		this._renderStatus(visibleRun);
+		this._host.style.display = dialectic || visibleRun ? '' : 'none';
 	}
 
 	private _renderAssign(assignment: IOrchestrationAssignment): void {
@@ -386,7 +391,7 @@ class ForgeOrchestrationBar extends Disposable {
 		const store = new DisposableStore();
 		this._statusStore.value = store;
 		clearNode(this._status);
-		if (!run || !isActiveOrchestrationStatus(run.status)) {
+		if (!run || run.status === 'idle') {
 			this._status.style.display = 'none';
 			return;
 		}
@@ -395,13 +400,48 @@ class ForgeOrchestrationBar extends Disposable {
 		append(row, $('span.forge-orch-status', undefined, statusLabel(run.status))).classList.add(run.status);
 		append(row, $('span.forge-orch-title', undefined, run.planSummary || run.goal));
 		const actions = append(row, $('.forge-orch-actions'));
-		if (run.status === 'paused') {
-			this._button(actions, localize('forge.orchestration.resume', "继续"), () => this._command({ type: 'resume', runId: run.runId }), store);
-		} else {
-			this._button(actions, localize('forge.orchestration.pause', "暂停"), () => this._command({ type: 'pause', runId: run.runId }), store);
+		if (isActiveOrchestrationStatus(run.status)) {
+			if (run.status === 'paused') {
+				this._button(actions, localize('forge.orchestration.resume', "继续"), () => this._command({ type: 'resume', runId: run.runId }), store);
+			} else {
+				this._button(actions, localize('forge.orchestration.pause', "暂停"), () => this._command({ type: 'pause', runId: run.runId }), store);
+			}
+			this._button(actions, localize('forge.orchestration.cancel', "取消"), () => this._command({ type: 'cancel', runId: run.runId }), store);
 		}
-		this._button(actions, localize('forge.orchestration.cancel', "取消"), () => this._command({ type: 'cancel', runId: run.runId }), store);
 		this._button(actions, localize('forge.orchestration.scm', "更改"), () => this._commandService.executeCommand('workbench.view.scm'), store);
+
+		if (run.tasks.length > 0) {
+			const tasks = append(this._status, $('.forge-orch-tasks'));
+			for (const task of run.tasks) {
+				const taskElement = append(tasks, $('.forge-orch-task'));
+				const taskRow = append(taskElement, $('.forge-orch-row'));
+				append(taskRow, $('span.forge-orch-status', undefined, statusLabel(task.status))).classList.add(task.status);
+				append(taskRow, $('span.forge-orch-title', undefined, task.title));
+				if (task.status === 'failed') {
+					const taskActions = append(taskRow, $('.forge-orch-actions'));
+					this._button(taskActions, localize('forge.orchestration.retryTask', "重试"), () => this._command({ type: 'retry', runId: run.runId, taskId: task.id }), store);
+					this._button(taskActions, localize('forge.orchestration.escalateTask', "Leader 接管"), () => this._command({ type: 'escalate', runId: run.runId, taskId: task.id }), store);
+				}
+
+				const worker = task.workerModel ? `${task.workerLabel} · ${task.workerModel}` : task.workerLabel;
+				append(taskElement, $('div.forge-orch-worker', undefined, localize('forge.orchestration.taskWorker', "{0} · 第 {1} 次尝试", worker, task.attempt + 1)));
+				const files = task.result?.changedFiles.length ? task.result.changedFiles : task.files;
+				if (files.length > 0) {
+					const visibleFiles = files.slice(0, 3).join(' · ');
+					const suffix = files.length > 3 ? localize('forge.orchestration.moreFiles', " · 另 {0} 个", files.length - 3) : '';
+					const fileElement = append(taskElement, $('div.forge-orch-files', undefined, `${visibleFiles}${suffix}`));
+					fileElement.title = files.join('\n');
+				}
+				const error = task.error ?? task.result?.error;
+				if (error) {
+					append(taskElement, $('div.forge-orch-error', undefined, error));
+				}
+			}
+		}
+
+		if (run.review) {
+			append(this._status, $('.forge-orch-review', undefined, run.review));
+		}
 	}
 
 	private _button(parent: HTMLElement, label: string, run: () => void, store: DisposableStore): void {

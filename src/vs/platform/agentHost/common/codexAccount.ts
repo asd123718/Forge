@@ -23,6 +23,7 @@ export interface ICodexAccountInfo {
 	readonly rateLimit?: ICodexAccountRateLimitInfo;
 	readonly authUrl?: string;
 	readonly authUrlNonce?: string;
+	readonly error?: string;
 }
 
 export function readCodexAccountInfo(state: RootState | undefined): ICodexAccountInfo {
@@ -57,5 +58,6 @@ export function readCodexAccountInfo(state: RootState | undefined): ICodexAccoun
 		} : undefined,
 		authUrl: typeof account.authUrl === 'string' ? account.authUrl : undefined,
 		authUrlNonce: typeof account.authUrlNonce === 'string' ? account.authUrlNonce : undefined,
+		error: typeof account.error === 'string' ? account.error : undefined,
 	};
 }

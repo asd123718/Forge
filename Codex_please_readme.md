@@ -43,7 +43,7 @@ Forge AI IDE。Windows x64。Code-OSS 1.134.0 工作台 + 官方 Codex `app-serv
 | id | `forge-ai` |
 | GitHub | https://github.com/asd123718/Forge |
 | Codex 配置家 | `%USERPROFILE%\.forge\codex`（和官方 `~\.codex` 分开；第一次只拷过 `auth.json`、`config.toml`） |
-| 日常启动 | `forge\start-forge.exe` → `.build\VSCode-win32-x64\Forge.exe` |
+| 日常启动 | `forge\start-forge.bat` → 内置 Electron Node 编译源码 → `.build\electron\Forge.exe` |
 | 安装包放过 | 父目录 `setup\`；GitHub 上有过 `v0.1.0-beta` |
 
 许可证现状是混合树：Code-OSS `LICENSE.txt` 仍是 MIT（微软声明还在）；`codex/` 是 Apache-2.0；产品层在 `LICENSING.md` 里写成意图 Apache-2.0；Live Edit 动画有一段改编自 Cline，Apache-2.0，写在 `ThirdPartyNotices.txt`。主人说过「仓库用 Apache-2.0」，落地时没有把整棵 Code-OSS 改成单一协议。
@@ -72,15 +72,9 @@ Forge AI IDE。Windows x64。Code-OSS 1.134.0 工作台 + 官方 Codex `app-serv
 C:\Project\Forge_Duplicate2\
   forge\                      产品源码
   setup\                      主人要过的 Inno 安装包输出
-  logs\                       调试导出过思考日志
-  Forge_0.1\                  主人要过的一份可运行快照
-  deepseek-harness-master\    Worker 参考源码
-  grok-build-main\            同上
-  vscode-main\                上游参考
-  cline-main\                 多模型 / Live Edit 参考
 ```
 
-主人 08-18 说过父目录除已有目录外不要再新建。后来又亲自要过 `setup/`、`logs/`、`Forge_0.1/`。
+父目录现在只保留 `.git/`、`setup/` 和 `forge/`。运行日志在 `forge/logs/`内，每次启动一个详细时间命名的子目录。
 
 `forge` 里常动到的位置：
 
@@ -95,7 +89,7 @@ docs/ROADMAP.md
 docs/PRODUCT-JSON-AUDIT.md
 docs/FORGE-DELTA.md
 docs/NIGHTLY.md
-start-forge.exe
+start-forge.bat
 ```
 
 ---
@@ -143,13 +137,11 @@ Live Edit 现在两套表现：
 
 安装包里出现过：侧栏找不到 Codex，Settings 里点 Codex 登录没反应，GitHub 登录正常。后来默认会话改成 Codex，Local/Copilot 默认入口拿掉了，安装包里带上 staged 的 Codex 原生二进制。
 
-### 4.3 启动器、图标、安装包  `已有`（签名和更新源还没有）
+### 4.3 源码启动  `已有`
 
-- 开屏那个脉冲图作了 exe 和安装包图标。
-- `start-forge.exe` 有成品就开 `.build\VSCode-win32-x64\Forge.exe`，不再去找开发用的 `.build\electron\Forge.exe`。
-- 安装包在 `setup\`。8GB 工程打成约 300MB，是因为装的是运行时不是源码目录。
-- 源码树里跑启动器曾经弹「开发运行时缺失」，安装包当时是正常的，启动器后来改过。
-- `docs/NIGHTLY.md` 里有未签名 nightly 步骤。签名、更新源、干净机器自动冒烟还没有。
+- 只使用 `start-forge.bat`，不再保留 EXE 启动器。
+- BAT 使用 `.build\electron\Forge.exe` 内置的 Node 编译当前源码，然后启动开发工作台。
+- 启动不执行依赖安装，也不生成 `.build\VSCode-win32-x64` 打包目录。
 
 ### 4.4 中文  `已有`
 
@@ -245,15 +237,11 @@ CLI Worker 若在 worktree 里写，主工作区可能到 merge 才有文件，�
 
 ---
 
-## 6. 成品是怎么更新出来的
+## 6. 源码是怎么启动的
 
-对话里实际用过的做法：改 `src/` 之后用仓库里的 esbuild（`forge/build/node_modules/esbuild`）打 bundle，再拷进 `.build\VSCode-win32-x64\resources\app\out\`，改 `product.json` 里对应文件的 SHA256（base64，末尾 `=` 去掉）。
+`start-forge.bat` 先确保 `forge/logs/` 存在，设置 `FORGE_LOGS_ROOT`，再使用 `.build\electron\Forge.exe` 的内置 Node 执行 Gulp `compile`。编译完成后直接以 Code - OSS 开发模式启动。
 
-工作台入口是 `src/vs/workbench/workbench.desktop.main.ts`，打出来的 js 大约 38MB，另有 css。`out/vs/workbench/workbench.desktop.main.js` 是另一份很小的转译结果；有一次如果拿它去盖打包目录，工作台会不完整。
-
-宿主入口是 `src/vs/platform/agentHost/node/agentHostMain.ts`，打到 `out/vs/platform/agentHost/node/agentHostMain.js`。
-
-用户这边看到新界面的方式一直是：退出正在跑的 `Forge.exe`，再开 `start-forge.exe`。全量 Inno 安装包步骤在 `docs/NIGHTLY.md`，对话里只有主人开口时才做过。
+工作台入口是 `src/vs/workbench/workbench.desktop.main.ts`，宿主入口是 `src/vs/platform/agentHost/node/agentHostMain.ts`。`out/` 是每次启动时可重建的临时转译目录，不是打包成品。
 
 ---
 

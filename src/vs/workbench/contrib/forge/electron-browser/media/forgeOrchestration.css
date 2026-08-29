@@ -41,6 +41,16 @@
 	background: var(--vscode-toolbar-hoverBackground);
 }
 
+.forge-orch-assign:focus-visible,
+.forge-orch-choice:focus-visible,
+.forge-orch-btn:focus-visible,
+.forge-agent-picker-setup:focus-visible,
+.forge-agent-setup-close:focus-visible,
+.forge-agent-setup-select:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
 .forge-orch-assign-k {
 	opacity: 0.65;
 	flex-shrink: 0;
@@ -48,6 +58,7 @@
 
 .forge-orch-assign-v {
 	font-weight: 600;
+	flex: 1 1 0;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -67,6 +78,7 @@
 	color: var(--vscode-foreground);
 	box-shadow: 0 -8px 24px var(--vscode-widget-shadow, transparent);
 	font-size: 12px;
+	animation: forge-orch-enter 100ms ease-out;
 }
 
 .forge-orch-picker-title {
@@ -146,13 +158,15 @@
 .forge-orch-row {
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
 	gap: 8px;
 	min-height: 22px;
 }
 
 .forge-orch-title {
 	font-weight: 600;
-	flex: 1;
+	flex: 1 1 160px;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -167,7 +181,9 @@
 
 .forge-orch-actions {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 4px;
+	margin-left: auto;
 	flex-shrink: 0;
 }
 
@@ -216,6 +232,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
+	max-height: 180px;
+	overflow: auto;
 }
 
 .forge-orch-task {
@@ -223,10 +241,24 @@
 	border-top: 1px solid var(--vscode-chat-requestBorder, var(--vscode-widget-border, transparent));
 }
 
+.forge-orch-task .forge-orch-worker,
+.forge-orch-task .forge-orch-files,
+.forge-orch-task .forge-orch-error {
+	margin-top: 3px;
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+}
+
+.forge-orch-task .forge-orch-error {
+	color: var(--vscode-errorForeground);
+}
+
 .forge-orch-review {
 	margin-top: 8px;
 	white-space: pre-wrap;
 	opacity: 0.9;
+	max-height: 120px;
+	overflow: auto;
 }
 
 .monaco-action-bar .action-item.forge-work-mode-item > .forge-work-mode {
@@ -420,4 +452,49 @@
 	background: var(--vscode-dropdown-background, var(--vscode-editorWidget-background));
 	color: var(--vscode-dropdown-foreground, inherit);
 	font: inherit;
+}
+
+@keyframes forge-orch-enter {
+	from { opacity: 0; transform: translateY(3px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 520px) {
+	.forge-orch-host {
+		margin-inline: 8px;
+	}
+
+	.forge-orch-assign {
+		flex-wrap: wrap;
+	}
+
+	.forge-orch-assign-k {
+		flex-basis: auto;
+	}
+
+	.forge-orch-assign-v {
+		flex-basis: calc(100% - 70px);
+	}
+
+	.context-view .forge-agent-setup {
+		width: min(520px, 94vw);
+	}
+
+	.forge-agent-setup-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.monaco-workbench.monaco-reduce-motion .forge-orch-picker,
+.monaco-workbench.monaco-reduce-motion .forge-agent-picker,
+.monaco-workbench.monaco-reduce-motion .forge-agent-setup {
+	animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.forge-orch-picker,
+	.forge-agent-picker,
+	.forge-agent-setup {
+		animation: none;
+	}
 }

@@ -12,6 +12,7 @@ import { basename, dirname } from '../../../../base/common/resources.js';
 import { Promises } from '../../../../base/node/pfs.js';
 import { IEnvironmentService } from '../../../../platform/environment/common/environment.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
+import { isForgeLogSessionName } from '../../../../platform/environment/common/forgeLogSession.js';
 
 export class LogsDataCleaner extends Disposable {
 
@@ -35,7 +36,7 @@ export class LogsDataCleaner extends Disposable {
 			const logsRoot = dirname(this.environmentService.logsHome.with({ scheme: Schemas.file })).fsPath;
 			const logFiles = await Promises.readdir(logsRoot);
 
-			const allSessions = logFiles.filter(logFile => /^\d{8}T\d{6}$/.test(logFile));
+			const allSessions = logFiles.filter(isForgeLogSessionName);
 			const oldSessions = allSessions.sort().filter(session => session !== currentLog);
 			const sessionsToDelete = oldSessions.slice(0, Math.max(0, oldSessions.length - 9));
 

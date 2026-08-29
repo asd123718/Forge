@@ -217,7 +217,7 @@ suite('codexMapAppServerEvents', () => {
 		}, {
 			start: [ActionType.ChatResponsePart],
 			partKind: ResponsePartKind.Reasoning,
-			delta: [{ type: ActionType.ChatReasoning, turnId: 'turn_a', partId, content: 'thinking' }],
+			delta: [{ type: ActionType.ChatReasoning, turnId: 'turn_a', partId, content: 'thinking', _meta: { codexReasoningKind: 'summary' } }],
 		});
 	});
 
@@ -234,7 +234,7 @@ suite('codexMapAppServerEvents', () => {
 		}, {
 			types: [ActionType.ChatResponsePart, ActionType.ChatReasoning],
 			partKind: ResponsePartKind.Reasoning,
-			delta: { type: ActionType.ChatReasoning, turnId: 'turn_a', partId, content: 'raw thought' },
+			delta: { type: ActionType.ChatReasoning, turnId: 'turn_a', partId, content: 'raw thought', _meta: { codexReasoningKind: 'text' } },
 		});
 	});
 

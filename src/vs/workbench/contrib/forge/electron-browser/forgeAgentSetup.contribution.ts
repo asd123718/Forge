@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './media/forgeOrchestration.css';
-import { $, addDisposableListener, append, clearNode, EventHelper, isAncestor, type EventLike } from '../../../../base/browser/dom.js';
+import { $, addDisposableListener, append, EventHelper, isAncestor, type EventLike } from '../../../../base/browser/dom.js';
 import { BaseActionViewItem } from '../../../../base/browser/ui/actionbar/actionViewItems.js';
 import { IAction } from '../../../../base/common/actions.js';
 import { Codicon } from '../../../../base/common/codicons.js';
@@ -41,14 +41,12 @@ import { ChatContextKeys } from '../../chat/common/actions/chatContextKeys.js';
 import { ILanguageModelsService } from '../../chat/common/languageModels.js';
 import { FORGE_WORK_MODE_SETTING_ID, readForgeWorkMode } from '../common/forgeWorkMode.js';
 import {
-	buildDialecticOrchestrationRequest,
 	dispatchForgeRootConfig,
 	FORGE_ORCHESTRATION_ASSIGNMENT_SETTING_ID,
 	forgeOrchestrationAddressesFromWidget,
 	forgeRootConfigValues,
 	isForgeAgentHostChatSession,
 	readPersistedOrchestrationAssignment,
-	resolveDialecticAssignment,
 } from '../common/forgeOrchestrationRun.js';
 import { trySendDialecticOrchestration } from '../common/forgeOrchestrationSend.js';
 import {
@@ -373,8 +371,13 @@ class ForgeAgentSetupOverlay extends Disposable {
 	private _render(container: HTMLElement, focusColumn: ForgeAgentColumn): DisposableStore {
 		const store = new DisposableStore();
 		const root = append(container, $('div.forge-agent-setup'));
+		const titleId = `forge-agent-setup-title-${generateUuid()}`;
+		root.setAttribute('role', 'dialog');
+		root.setAttribute('aria-modal', 'false');
+		root.setAttribute('aria-labelledby', titleId);
 		const header = append(root, $('div.forge-agent-setup-head'));
-		append(header, $('div.forge-agent-setup-title', undefined, localize('forge.agentSetup.title', "Agent 配置")));
+		const title = append(header, $('div.forge-agent-setup-title', undefined, localize('forge.agentSetup.title', "Agent 配置")));
+		title.id = titleId;
 		const close = append(header, $('button.forge-agent-setup-close', { type: 'button' }));
 		close.setAttribute('aria-label', localize('forge.agentSetup.close', "关闭"));
 		close.classList.add(...ThemeIcon.asClassNameArray(Codicon.close));
@@ -383,6 +386,7 @@ class ForgeAgentSetupOverlay extends Disposable {
 		const grid = append(root, $('div.forge-agent-setup-grid'));
 		this._column(store, grid, 'logos', localize('forge.agentSetup.logos', "Logos"), focusColumn === 'logos');
 		this._column(store, grid, 'dialectic', localize('forge.agentSetup.dialectic', "Dialectic"), focusColumn === 'dialectic');
+		queueMicrotask(() => close.focus());
 		return store;
 	}
 
@@ -425,14 +429,14 @@ class ForgeAgentSetupOverlay extends Disposable {
 	private _select(store: DisposableStore, parent: HTMLElement, label: string, value: string, options: readonly { value: string; label: string }[], onChange: (value: string) => void): void {
 		const row = append(parent, $('label.forge-agent-setup-field'));
 		append(row, $('span.forge-agent-setup-field-label', undefined, label));
-		const select = append(row, $('select.forge-agent-setup-select'));
+		const select = append(row, $('select.forge-agent-setup-select')) as HTMLSelectElement;
 		for (const option of options) {
-			const node = append(select, $('option'));
+			const node = append(select, $('option')) as HTMLOptionElement;
 			node.value = option.value;
 			node.textContent = option.label;
 		}
 		if (value && !options.some(option => option.value === value)) {
-			const extra = append(select, $('option'));
+			const extra = append(select, $('option')) as HTMLOptionElement;
 			extra.value = value;
 			extra.textContent = value;
 		}
@@ -502,6 +506,7 @@ class ForgeLogosAgentPickerActionViewItem extends BaseActionViewItem {
 	private _close(): void {
 		this._openView?.close();
 		this._openView = undefined;
+		this._renderLabel();
 	}
 
 	private _show(): void {
@@ -514,13 +519,34 @@ class ForgeLogosAgentPickerActionViewItem extends BaseActionViewItem {
 			anchorAlignment: AnchorAlignment.RIGHT,
 			anchorPosition: AnchorPosition.ABOVE,
 			render: container => this._renderPicker(container),
-			onDOMEvent: e => {
-				if (e.type === 'keydown' && (e as KeyboardEvent).key === 'Escape') {
-					this._close();
-				}
+			onDOMEvent: e => this._onPickerEvent(e),
+			onHide: () => {
+				this._openView = undefined;
+				this._renderLabel();
 			},
-			onHide: () => { this._openView = undefined; },
 		});
+		this._renderLabel();
+	}
+
+	private _onPickerEvent(e: Event): void {
+		if (e.type === 'keydown' && (e as KeyboardEvent).key === 'Escape') {
+			this._close();
+			return;
+		}
+		if (e.type !== 'click' && e.type !== 'mousedown') {
+			return;
+		}
+		const target = e.target;
+		if (!(target instanceof HTMLElement)) {
+			return;
+		}
+		if (this.element && isAncestor(target, this.element)) {
+			return;
+		}
+		if (isAncestor(target, this._contextViewService.getContextViewElement())) {
+			return;
+		}
+		this._close();
 	}
 
 	private _renderLabel(): void {
@@ -531,12 +557,15 @@ class ForgeLogosAgentPickerActionViewItem extends BaseActionViewItem {
 		const agent = orchestrationAgentInfo(agentId);
 		const profile = getAgentProfile(readForgeAgentSetup(this._configurationService.getValue(FORGE_AGENT_SETUP_SETTING_ID)), 'logos', agentId);
 		this._label.textContent = agent?.label ?? agentId;
-		this.element?.querySelector('.forge-logos-agent')?.setAttribute('aria-label', localize('forge.logos.agentAria', "Agent，{0}，{1}", agent?.label ?? agentId, profile.model ?? ''));
+		const trigger = this.element?.querySelector('.forge-logos-agent');
+		trigger?.setAttribute('aria-expanded', this._openView ? 'true' : 'false');
+		trigger?.setAttribute('aria-label', localize('forge.logos.agentAria', "Agent，{0}，{1}", agent?.label ?? agentId, profile.model ?? ''));
 	}
 
 	private _renderPicker(container: HTMLElement): DisposableStore {
 		const store = new DisposableStore();
 		const picker = append(container, $('div.forge-agent-picker'));
+		picker.setAttribute('role', 'listbox');
 		const head = append(picker, $('div.forge-agent-picker-head'));
 		append(head, $('div.forge-orch-picker-title', undefined, localize('forge.logos.pickAgentTitle', "选择 Agent")));
 		const gear = append(head, $('button.forge-agent-picker-setup', { type: 'button' }));

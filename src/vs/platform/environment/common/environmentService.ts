@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { toLocalISOString } from '../../../base/common/date.js';
 import { memoize } from '../../../base/common/decorators.js';
 import { FileAccess, Schemas } from '../../../base/common/network.js';
 import { dirname, join, normalize, resolve } from '../../../base/common/path.js';
@@ -13,6 +12,7 @@ import { URI } from '../../../base/common/uri.js';
 import { NativeParsedArgs } from './argv.js';
 import { ExtensionKind, IExtensionHostDebugParams, INativeEnvironmentService } from './environment.js';
 import { IProductService } from '../../product/common/productService.js';
+import { createForgeLogSessionName } from './forgeLogSession.js';
 
 export const EXTENSION_IDENTIFIER_WITH_LOG_REGEX = /^([^.]+\..+)[:=](.+)$/;
 
@@ -72,8 +72,12 @@ export abstract class AbstractNativeEnvironmentService implements INativeEnviron
 
 	get logsHome(): URI {
 		if (!this.args.logsPath) {
-			const key = toLocalISOString(new Date()).replace(/-|:|\.\d+Z$/g, '');
-			this.args.logsPath = join(this.userDataPath, 'logs', key);
+			const key = createForgeLogSessionName();
+			// The source launcher pins Forge diagnostics to <repository>/logs so a copied
+			// source tree keeps its diagnostics beside the project. Other launch modes retain
+			// the normal user-data location.
+			const forgeLogsRoot = env['FORGE_LOGS_ROOT'];
+			this.args.logsPath = join(forgeLogsRoot ? resolve(forgeLogsRoot) : join(this.userDataPath, 'logs'), key);
 		}
 
 		return URI.file(this.args.logsPath);

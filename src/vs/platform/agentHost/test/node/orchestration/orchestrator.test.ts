@@ -4,7 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { mkdtemp, rm } from 'fs/promises';
+import { execFile } from 'child_process';
+import { access, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from '../../../../../base/common/path.js';
 import { timeout } from '../../../../../base/common/async.js';
@@ -14,7 +15,13 @@ import { NullLogService } from '../../../../../platform/log/common/log.js';
 import { AgentHostStateManager } from '../../../node/agentHostStateManager.js';
 import { AgentConfigurationService } from '../../../node/agentConfigurationService.js';
 import { ForgeOrchestrationService } from '../../../node/orchestration/orchestrator.js';
-import type { ILeaderProvider, IOrchestrationPlan, IWorkerProvider, IWorkerTaskResult } from '../../../common/orchestration/orchestrationTypes.js';
+import type { ILeaderPlanContext, ILeaderProvider, IOrchestrationPlan, IWorkerAvailability, IWorkerProvider, IWorkerTaskResult } from '../../../common/orchestration/orchestrationTypes.js';
+
+function runGit(cwd: string, args: readonly string[]): Promise<void> {
+	return new Promise((resolve, reject) => {
+		execFile('git', [...args], { cwd, windowsHide: true }, error => error ? reject(error) : resolve());
+	});
+}
 
 class FakeLeader implements ILeaderProvider {
 	readonly label: string;
@@ -42,19 +49,48 @@ class FakeWorker implements IWorkerProvider {
 	constructor(
 		readonly id: string,
 		readonly label: string,
-		private readonly _run: (prompt: string) => Promise<IWorkerTaskResult>,
+		private readonly _run: (prompt: string, workspace: string, abort: AbortSignal) => Promise<IWorkerTaskResult>,
 		private readonly _available = true,
 		private readonly _availabilityReason?: 'missing-credentials' | 'probe-failed',
 	) { }
-	async checkAvailability() {
+	async checkAvailability(): Promise<IWorkerAvailability> {
 		return {
 			available: this._available,
 			reason: this._available ? undefined : (this._availabilityReason ?? 'invalid-runtime'),
 		};
 	}
 	async isAvailable(): Promise<boolean> { return this._available; }
-	async run(request: { task: { prompt: string } }): Promise<IWorkerTaskResult> {
-		return this._run(request.task.prompt);
+	async run(request: { task: { prompt: string }; workspace: string; abort: AbortSignal }): Promise<IWorkerTaskResult> {
+		return this._run(request.task.prompt, request.workspace, request.abort);
+	}
+}
+
+class PausingPlanLeader implements ILeaderProvider {
+	readonly id = 'codex';
+	readonly label = 'codex';
+	public plans = 0;
+	public reviews = 0;
+
+	async plan(_context: ILeaderPlanContext, abort: AbortSignal): Promise<IOrchestrationPlan> {
+		this.plans++;
+		if (this.plans === 1) {
+			await new Promise<void>(resolve => abort.addEventListener('abort', () => resolve(), { once: true }));
+			throw new Error('planning interrupted');
+		}
+		return {
+			summary: 'resumed plan',
+			contract: '',
+			tasks: [{ id: 'a', title: 'A', prompt: 'a', files: [], dependsOn: [], workerHint: 'deepseek-harness' }],
+		};
+	}
+
+	async review(): Promise<string> {
+		this.reviews++;
+		return 'Looks good.';
+	}
+
+	async implement(): Promise<IWorkerTaskResult> {
+		return { status: 'failed', summary: '', changedFiles: [], error: 'not used', usage: { durationMs: 0 } };
 	}
 }
 
@@ -73,6 +109,10 @@ suite('Forge orchestration scheduler', () => {
 
 	async function tempWorkspace(): Promise<string> {
 		const dir = await mkdtemp(join(tmpdir(), 'forge-orch-'));
+		await writeFile(join(dir, 'README.md'), '# Test workspace\n');
+		await runGit(dir, ['init']);
+		await runGit(dir, ['add', '--all']);
+		await runGit(dir, ['-c', 'user.name=Forge Test', '-c', 'user.email=forge-test@invalid', 'commit', '--no-gpg-sign', '-m', 'initial']);
 		disposables.add({ dispose: () => { void rm(dir, { recursive: true, force: true }); } });
 		return dir;
 	}
@@ -274,5 +314,138 @@ suite('Forge orchestration scheduler', () => {
 		assert.strictEqual(run.tasks.length, 1);
 		assert.strictEqual(run.tasks[0].workerProviderId, 'grok-build');
 		assert.strictEqual(run.tasks[0].thinkingLevel, 'high');
+	});
+
+	test('does not merge partial edits from a failed worker', async () => {
+		const service = createService();
+		service.setLeader(new FakeLeader({
+			summary: 'one task',
+			contract: '',
+			tasks: [{ id: 'partial', title: 'Partial', prompt: 'fail after edit', files: ['failed.txt'], dependsOn: [], workerHint: 'deepseek-harness' }],
+		}));
+		service.registerWorker(new FakeWorker('deepseek-harness', 'DeepSeek Harness', async (_prompt, workspace) => {
+			await writeFile(join(workspace, 'failed.txt'), 'must not merge\n');
+			return { status: 'failed', summary: '', changedFiles: ['failed.txt'], error: 'worker failed', usage: { durationMs: 1 } };
+		}));
+		const workspace = await tempWorkspace();
+		const run = await service.start({
+			chatUri: 'ahp-chat://x/default',
+			sessionUri: 'codex://x',
+			workspace,
+			goal: 'keep failed edits isolated',
+		});
+		assert.strictEqual(run.status, 'completed');
+		await assert.rejects(access(join(workspace, 'failed.txt')));
+	});
+
+	test('marks dependency cycles as failed instead of completed', async () => {
+		const service = createService();
+		const leader = new FakeLeader({
+			summary: 'cycle',
+			contract: '',
+			tasks: [
+				{ id: 'a', title: 'A', prompt: 'a', files: [], dependsOn: ['b'], workerHint: 'deepseek-harness' },
+				{ id: 'b', title: 'B', prompt: 'b', files: [], dependsOn: ['a'], workerHint: 'grok-build' },
+			],
+		});
+		service.setLeader(leader);
+		const run = await service.start({
+			chatUri: 'ahp-chat://x/default',
+			sessionUri: 'codex://x',
+			workspace: await tempWorkspace(),
+			goal: 'reject cycle',
+		});
+		assert.strictEqual(run.status, 'failed');
+		assert.ok(run.tasks.every(task => task.status === 'failed'));
+		assert.match(run.tasks[0].error ?? '', /dependencies|cycle/i);
+		assert.strictEqual(leader.reviews, 1);
+	});
+
+	test('pause aborts the active worker and resume runs the queued task', async function () {
+		this.timeout(5_000);
+		const service = createService();
+		service.setLeader(new FakeLeader({
+			summary: 'pause',
+			contract: '',
+			tasks: [{ id: 'a', title: 'A', prompt: 'a', files: [], dependsOn: [], workerHint: 'deepseek-harness' }],
+		}));
+		let attempts = 0;
+		service.registerWorker(new FakeWorker('deepseek-harness', 'DeepSeek Harness', async (_prompt, _workspace, abort) => {
+			attempts++;
+			if (attempts === 1) {
+				await new Promise<void>(resolve => {
+					if (abort.aborted) {
+						resolve();
+					} else {
+						abort.addEventListener('abort', () => resolve(), { once: true });
+					}
+				});
+			}
+			return { status: 'completed', summary: 'done', changedFiles: [], usage: { durationMs: 1 } };
+		}));
+		const started = service.start({
+			chatUri: 'ahp-chat://x/default',
+			sessionUri: 'codex://x',
+			workspace: await tempWorkspace(),
+			goal: 'pause and resume',
+		});
+		while (attempts !== 1) {
+			await timeout(10);
+		}
+		await service.command({ type: 'pause' });
+		assert.strictEqual((await started).status, 'paused');
+		assert.strictEqual(service.state?.tasks[0].status, 'queued');
+		await service.command({ type: 'resume' });
+		assert.strictEqual(service.state?.status, 'completed');
+		assert.strictEqual(service.state?.tasks[0].status, 'completed');
+		assert.strictEqual(attempts, 2);
+	});
+
+	test('pause during planning restarts planning on resume', async function () {
+		this.timeout(5_000);
+		const service = createService();
+		const leader = new PausingPlanLeader();
+		service.setLeader(leader);
+		service.registerWorker(new FakeWorker('deepseek-harness', 'DeepSeek Harness', async () => ({
+			status: 'completed', summary: 'done', changedFiles: [], usage: { durationMs: 1 },
+		})));
+		const started = service.start({
+			chatUri: 'ahp-chat://x/default',
+			sessionUri: 'codex://x',
+			workspace: await tempWorkspace(),
+			goal: 'pause planning',
+		});
+		while (leader.plans !== 1) {
+			await timeout(10);
+		}
+		await service.command({ type: 'pause' });
+		assert.strictEqual((await started).status, 'paused');
+		await service.command({ type: 'resume' });
+		assert.strictEqual(service.state?.status, 'completed');
+		assert.strictEqual(service.state?.tasks[0].status, 'completed');
+		assert.strictEqual(leader.plans, 2);
+		assert.strictEqual(leader.reviews, 1);
+	});
+
+	test('a failed leader review terminates the run instead of leaving it reviewing', async () => {
+		const service = createService();
+		const leader = new FakeLeader({
+			summary: 'review failure',
+			contract: '',
+			tasks: [{ id: 'a', title: 'A', prompt: 'a', files: [], dependsOn: [], workerHint: 'deepseek-harness' }],
+		});
+		leader.review = async () => { throw new Error('review unavailable'); };
+		service.setLeader(leader);
+		service.registerWorker(new FakeWorker('deepseek-harness', 'DeepSeek Harness', async () => ({
+			status: 'completed', summary: 'done', changedFiles: [], usage: { durationMs: 1 },
+		})));
+		const run = await service.start({
+			chatUri: 'ahp-chat://x/default',
+			sessionUri: 'codex://x',
+			workspace: await tempWorkspace(),
+			goal: 'handle review failure',
+		});
+		assert.strictEqual(run.status, 'failed');
+		assert.match(run.error ?? '', /review unavailable/);
 	});
 });

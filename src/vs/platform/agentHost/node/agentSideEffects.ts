@@ -23,6 +23,7 @@ import { AgentHostLaunchKind, createUnknownAgentHostClientTelemetryContext, type
 import { readAgentModelByokIdentifier } from '../common/agentModelByokMeta.js';
 import { AgentSession, AgentSignal, IAgent, IAgentChatContext, IAgentToolPendingConfirmationSignal } from '../common/agent.js';
 import { readToolCallMeta, toToolCallMeta } from '../common/meta/agentToolCallMeta.js';
+import { readCodexReasoningKind } from '../common/meta/codexReasoningMeta.js';
 
 import { ITelemetryService } from '../../telemetry/common/telemetry.js';
 import { ISessionDatabase, ISessionDataService } from '../common/sessionDataService.js';
@@ -90,6 +91,7 @@ import { stripProxyErrorMarker, toChatErrorMeta, tryParseForwardedChatError } fr
 import { AGENT_HOST_TITLE_SOURCE_USER, customChatTitleMetadataKey, customChatTitleSourceMetadataKey, persistSessionMetadata, SESSION_CUSTOM_TITLE_KEY, SESSION_CUSTOM_TITLE_SOURCE_KEY } from './shared/persistSessionMetadata.js';
 import { targetForMcpServer, targetForPlugin } from './shared/customizationEnablementGate.js';
 import type { WorktreeIsolation } from './shared/worktreeIsolation.js';
+import type { ForgeDiagnosticsLog } from './forgeDiagnosticsLog.js';
 
 /**
  * Options for constructing an {@link AgentSideEffects} instance.
@@ -134,6 +136,8 @@ export interface IAgentSideEffectsOptions {
 	readonly onUserMessage?: (session: ProtocolURI, text: string) => void;
 	/** Process launcher used when client-origin metadata is unavailable. */
 	readonly hostLaunchKind?: AgentHostLaunchKind;
+	/** Forge-owned diagnostics sink. This is application instrumentation, never model prompting. */
+	readonly diagnosticsLog?: ForgeDiagnosticsLog;
 }
 
 interface IQueuedMessageSender {
@@ -248,6 +252,8 @@ export class AgentSideEffects extends Disposable {
 	/** Serializes refreshes per session so state-based deduplication observes the preceding dispatch. */
 	private readonly _pendingSessionCustomizationPublishes = new Map<ProtocolURI, Promise<void>>();
 	private readonly _pendingCustomizationEnablementRefreshes = new Set<ProtocolURI>();
+	/** Last cumulative tool output, used to log only newly streamed text. */
+	private readonly _diagnosticToolOutput = new Map<string, string>();
 
 	/**
 	 * Buffers signals whose `parentToolCallId` references a subagent
@@ -966,6 +972,7 @@ export class AgentSideEffects extends Disposable {
 				return;
 			}
 		}
+		this._recordAgentAction(sessionKey, action);
 
 		if (action.type === ActionType.ChatToolCallStart && agent) {
 			this._toolCallAgents.set(`${sessionKey}:${action.toolCallId}`, agent.id);
@@ -1089,6 +1096,121 @@ export class AgentSideEffects extends Disposable {
 			this._toolCallTracker.clearSession(sessionKey);
 			this._captureTurnCheckpointAndRefresh(sessionKey, turnId, clientContext);
 			this._markSessionUnread(sessionUri);
+		}
+	}
+
+	private _recordAgentAction(sessionKey: ProtocolURI, action: StateAction): void {
+		const log = this._options.diagnosticsLog;
+		if (!log) {
+			return;
+		}
+		const turnId = hasKey(action, { turnId: true }) && typeof action.turnId === 'string' ? action.turnId : undefined;
+		const context = { session: sessionKey, turn: turnId };
+		switch (action.type) {
+			case ActionType.ChatDelta:
+				log.recordStream('chat', `${sessionKey}:${action.turnId}:assistant:${action.partId}`, 'ASSISTANT', action.content, context);
+				break;
+			case ActionType.ChatReasoning:
+				// This action contains only provider-published reasoning content/summary. Forge never
+				// requests or reconstructs hidden chain-of-thought.
+				log.recordStream('chat', `${sessionKey}:${action.turnId}:reasoning:${action.partId}`, readCodexReasoningKind(action) === 'summary' ? 'REASONING-SUMMARY' : 'REASONING-PUBLISHED', action.content, context);
+				break;
+			case ActionType.ChatResponsePart:
+				if (action.part.kind === ResponsePartKind.Markdown && action.part.content) {
+					log.recordText('chat', 'ASSISTANT', action.part.content, context);
+				} else if (action.part.kind === ResponsePartKind.Reasoning && action.part.content) {
+					log.recordText('chat', 'REASONING-SUMMARY', action.part.content, context);
+				} else {
+					log.record('agent', 'RESPONSE.PART', { kind: action.part.kind }, context);
+				}
+				break;
+			case ActionType.ChatToolCallStart:
+				log.record('timeline', 'TOOL.START', { ref: log.record('tools', 'TOOL.START', { toolCallId: action.toolCallId, toolName: action.toolName, displayName: action.displayName, intention: action.intention, contributor: action.contributor }, context), toolCallId: action.toolCallId, toolName: action.toolName }, context);
+				break;
+			case ActionType.ChatToolCallDelta:
+				if (action.content) {
+					log.recordStream('tools', `${sessionKey}:${action.turnId}:tool:${action.toolCallId}`, 'TOOL.ARGS', action.content, { ...context, toolCallId: action.toolCallId });
+				}
+				if (action.invocationMessage) {
+					log.record('tools', 'TOOL.PROGRESS', { toolCallId: action.toolCallId, invocationMessage: action.invocationMessage }, context);
+				}
+				break;
+			case ActionType.ChatToolCallContentChanged: {
+				const key = `${sessionKey}:${action.turnId}:${action.toolCallId}`;
+				const text = action.content
+					.filter(content => hasKey(content, { type: true }) && content.type === ToolResultContentType.Text)
+					.map(content => content.text)
+					.join('\n');
+				const previous = this._diagnosticToolOutput.get(key) ?? '';
+				const delta = text.startsWith(previous) ? text.slice(previous.length) : text;
+				this._diagnosticToolOutput.set(key, text);
+				if (delta) {
+					log.recordStream('tools', `${key}:output`, text.startsWith(previous) ? 'TOOL.OUTPUT' : 'TOOL.OUTPUT-SNAPSHOT', delta, { ...context, toolCallId: action.toolCallId });
+				}
+				for (const content of action.content) {
+					if (hasKey(content, { type: true }) && content.type === ToolResultContentType.FileEdit) {
+						log.record('files', 'FILE.PREVIEW', content, { ...context, toolCallId: action.toolCallId });
+					}
+				}
+				break;
+			}
+			case ActionType.ChatToolCallReady:
+				log.flushStreams(`${sessionKey}:${action.turnId}:tool:${action.toolCallId}`);
+				{
+					const type = action.confirmed ? 'APPROVAL.AUTO' : 'APPROVAL.REQUESTED';
+					log.record('timeline', type, { ref: log.record('tools', type, { toolCallId: action.toolCallId, invocationMessage: action.invocationMessage, confirmationTitle: action.confirmationTitle, riskAssessment: action.riskAssessment, confirmed: action.confirmed, toolInput: getInlineToolInput(action.toolInput), edits: action.edits }, context), toolCallId: action.toolCallId }, context);
+				}
+				break;
+			case ActionType.ChatToolCallComplete: {
+				log.flushStreams(`${sessionKey}:${action.turnId}:tool:${action.toolCallId}`);
+				log.flushStreams(`${sessionKey}:${action.turnId}:${action.toolCallId}:output`);
+				this._diagnosticToolOutput.delete(`${sessionKey}:${action.turnId}:${action.toolCallId}`);
+				log.record('timeline', 'TOOL.COMPLETE', { ref: log.record('tools', 'TOOL.COMPLETE', { toolCallId: action.toolCallId, result: action.result }, context), toolCallId: action.toolCallId, success: action.result.success }, context);
+				const edits = getToolFileEdits(action.result);
+				for (const edit of edits) {
+					const operation = !edit.before ? 'CREATE' : !edit.after ? 'DELETE' : edit.before.uri !== edit.after.uri ? 'RENAME' : 'MODIFY';
+					log.record('files', `FILE.${operation}`, edit, { ...context, toolCallId: action.toolCallId });
+				}
+				break;
+			}
+			case ActionType.ChatToolCallAuthRequired:
+				log.record('tools', 'TOOL.AUTH_REQUIRED', { toolCallId: action.toolCallId, auth: action.auth }, context);
+				break;
+			case ActionType.ChatToolCallAuthResolved:
+				log.record('tools', 'TOOL.AUTH_RESOLVED', { toolCallId: action.toolCallId }, context);
+				break;
+			case ActionType.ChatActivityChanged:
+				log.record('agent', 'AGENT.ACTIVITY', { activity: action.activity }, context);
+				break;
+			case ActionType.ChatInputRequested:
+				log.record('agent', 'USER_INPUT.REQUESTED', action.request, context);
+				break;
+			case ActionType.ChatPendingMessageSet:
+				log.record('agent', 'MESSAGE.QUEUED', { id: action.id, kind: action.kind }, context);
+				break;
+			case ActionType.ChatPendingMessageRemoved:
+				log.record('agent', 'MESSAGE.DEQUEUED', { id: action.id, kind: action.kind }, context);
+				break;
+			case ActionType.ChatUsage:
+				log.record('agent', 'TOKEN.USAGE', action.usage, context);
+				break;
+			case ActionType.ChatTurnComplete:
+				log.flushStreams(`${sessionKey}:${action.turnId}:`);
+				log.record('agent', 'TURN.COMPLETE', { duration: action.duration }, context);
+				log.record('timeline', 'TURN.COMPLETE', { duration: action.duration }, context);
+				log.record('summary', 'TURN.COMPLETE', { session: sessionKey, turn: action.turnId, duration: action.duration });
+				break;
+			case ActionType.ChatTurnCancelled:
+				log.flushStreams(`${sessionKey}:${action.turnId}:`);
+				log.record('agent', 'TURN.CANCELLED', { duration: action.duration }, context);
+				log.record('timeline', 'TURN.CANCELLED', { duration: action.duration }, context);
+				break;
+			case ActionType.ChatError:
+				log.flushStreams(`${sessionKey}:${action.turnId}:`);
+				log.record('timeline', 'TURN.ERROR', { ref: log.record('errors', 'TURN.ERROR', { duration: action.duration, error: action.error }, context) }, context);
+				break;
+			default:
+				break;
 		}
 	}
 
@@ -1563,6 +1685,8 @@ export class AgentSideEffects extends Disposable {
 					throw new Error(`ChatTurnStarted must be handled on an AHP chat channel: ${channel}`);
 				}
 				const turnStopWatch = StopWatch.create(false);
+				this._options.diagnosticsLog?.recordText('chat', 'USER', action.message.text, { session: channel, turn: action.turnId, model: action.message.model?.id });
+				this._options.diagnosticsLog?.record('timeline', 'TURN.START', { session: channel, turn: action.turnId, model: action.message.model?.id, attachmentCount: action.message.attachments?.length ?? 0 });
 				// Per-turn streaming part tracking is owned by the agent
 				// (e.g. CopilotAgentSession) and reset on its `send()` call.
 
@@ -1612,6 +1736,11 @@ export class AgentSideEffects extends Disposable {
 				break;
 			}
 			case ActionType.ChatToolCallConfirmed: {
+				const approvalLog = this._options.diagnosticsLog;
+				if (approvalLog) {
+					const type = action.approved ? 'APPROVAL.APPROVED' : 'APPROVAL.DENIED';
+					approvalLog.record('timeline', type, { ref: approvalLog.record('tools', type, action, { session: channel, turn: action.turnId }), toolCallId: action.toolCallId }, { session: channel, turn: action.turnId });
+				}
 				if (!chatChannel) {
 					throw new Error(`ChatToolCallConfirmed must be handled on an AHP chat channel: ${channel}`);
 				}

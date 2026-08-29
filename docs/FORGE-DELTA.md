@@ -15,7 +15,7 @@ Categories:
 - Product identity: `product.json`
 - Scripts: `scripts/forge/**`
 - Docs: `docs/**`, root `README.md`, `LICENSING.md`
-- Launcher / icons: `scripts/forge/ForgeLauncher.cs` and related build scripts
+- Source launcher / icons: `start-forge.bat` and `resources/win32/**`
 
 Generated protocol under `src/vs/platform/agentHost/node/codex/protocol/generated`
 is **not** a Forge edit surface. Never hand-edit it; regenerate with

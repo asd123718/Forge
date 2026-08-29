@@ -70,6 +70,7 @@ import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { PendingRequestRegistry } from '../../common/pendingRequestRegistry.js';
 import { IAgentHostOTelService } from '../../common/otel/agentHostOTelService.js';
 import { CodexAppServerClient, JsonRpcError, transportFromChildProcess, type ICodexAppServerClient, type ServerRequestHandlerResult } from './codexAppServerClient.js';
+import { getActiveForgeDiagnosticsLog } from '../forgeDiagnosticsLog.js';
 import { ICodexProxyService, type ICodexProxyHandle } from './codexProxyService.js';
 import { createCodexSessionMapState, extractUserInputText, finalizeCodexTurnMapState, mapAgentMessageDelta, mapCommandExecutionOutputDelta, mapErrorNotification, mapFileChangeOutputDelta, mapFileChangePatchUpdated, mapFileChangeStarted, mapItemCompleted, mapItemStarted, mapMcpToolCallProgress, mapReasoningSummaryPartAdded, mapReasoningSummaryTextDelta, mapReasoningTextDelta, mapTokenUsageUpdated, mapTurnCompleted, mapTurnDiffUpdated, mapTurnStarted, type ICodexSessionMapState } from './codexMapAppServerEvents.js';
 import { unwrapShellInvocation } from './codexShellCommand.js';
@@ -157,12 +158,36 @@ const CLIENT_INFO = {
 	version: '0.1.0',
 };
 
+/** Keep protocol logs compact: domain payloads are already recorded in chat/tool/file logs. */
+function summarizeCodexRpcMessage(message: unknown): Record<string, unknown> {
+	if (!message || typeof message !== 'object' || Array.isArray(message)) {
+		return { valueType: typeof message };
+	}
+	const record = message as Record<string, unknown>;
+	const params = record['params'];
+	const paramsRecord = params && typeof params === 'object' && !Array.isArray(params) ? params as Record<string, unknown> : undefined;
+	const identifiers: Record<string, unknown> = {};
+	for (const key of ['threadId', 'turnId', 'itemId', 'callId', 'toolCallId', 'conversationId', 'id']) {
+		if (paramsRecord && paramsRecord[key] !== undefined) {
+			identifiers[key] = paramsRecord[key];
+		}
+	}
+	return {
+		method: record['method'],
+		id: record['id'],
+		paramsKeys: paramsRecord ? Object.keys(paramsRecord) : undefined,
+		identifiers,
+		hasResult: Object.prototype.hasOwnProperty.call(record, 'result'),
+		error: record['error'],
+	};
+}
+
 const CODEX_DESKTOP_ROLLOUT_PREFIX_LENGTH = 16 * 1024;
 const CODEX_DESKTOP_ROLLOUT_PREFIX_CONCURRENCY = 8;
 const CODEX_COLD_SESSION_READ_CONCURRENCY = 8;
 const CODEX_DESKTOP_WORKSPACE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CODEX_DESKTOP_SESSION_META_PATTERN = /"type"\s*:\s*"session_meta".*"payload"\s*:\s*\{[^}]*"originator"\s*:\s*"Codex Desktop"/s;
-const FORGE_LIVE_EDIT_INSTRUCTIONS = [
+export const FORGE_LIVE_EDIT_INSTRUCTIONS = [
 	'If your tool list includes a native apply_patch function or freeform tool, use that for workspace text edits.',
 	'Otherwise you MUST use the write_file function tool: pass path plus the complete file contents in one call. Never split one file across multiple writes.',
 	'Never invoke apply_patch, apply_patch.bat, or `codex.exe --codex-run-as-apply-patch` through shell_command. On Windows that wrapper cannot carry large or quoted patches and will fail. If a shell apply_patch call fails, do not retry it — switch to write_file or the native apply_patch tool.',
@@ -232,6 +257,43 @@ const MCP_TOOL_APPROVAL_ANSWER_DECLINE = '__codex_mcp_decline__';
 const CODEX_RESPONSES_ENDPOINT = '/responses';
 const CODEX_COPILOT_MODEL_PROVIDER = 'vscode-proxy';
 const CODEX_OPENAI_MODEL_PROVIDER = 'openai';
+const CODEX_NON_OVERRIDABLE_BUILT_IN_MODEL_PROVIDERS = new Set(['openai', 'ollama', 'lmstudio']);
+
+export function isCodexNonOverridableBuiltInProvider(providerId: string): boolean {
+	return CODEX_NON_OVERRIDABLE_BUILT_IN_MODEL_PROVIDERS.has(providerId.toLowerCase());
+}
+
+export function codexManagedModelProviderEdits(previous: ICodexModelsConfig, next: ICodexModelsConfig): ConfigEdit[] {
+	const edits: ConfigEdit[] = [];
+	for (const provider of previous.providers) {
+		if (!isCodexNonOverridableBuiltInProvider(provider.id) && !next.providers.some(candidate => candidate.id === provider.id)) {
+			edits.push({ keyPath: `model_providers.${provider.id}`, value: null, mergeStrategy: 'replace' });
+		}
+	}
+	for (const provider of next.providers) {
+		// Codex Core owns these built-ins. Adding them under `model_providers`
+		// makes the entire batch invalid; selecting one only requires the top-level
+		// `model_provider` and `model` values.
+		if (isCodexNonOverridableBuiltInProvider(provider.id)) {
+			continue;
+		}
+		if (provider.official && provider.baseUrl.trim() === '') {
+			edits.push({ keyPath: `model_providers.${provider.id}`, value: null, mergeStrategy: 'replace' });
+			continue;
+		}
+		const envKey = provider.authMode === 'stored'
+			? codexProviderStoredApiKeyEnv(provider.id)
+			: provider.authMode === 'environment' ? provider.envKey : '';
+		edits.push(
+			{ keyPath: `model_providers.${provider.id}.name`, value: provider.name, mergeStrategy: 'replace' },
+			{ keyPath: `model_providers.${provider.id}.wire_api`, value: provider.wireApi, mergeStrategy: 'replace' },
+			{ keyPath: `model_providers.${provider.id}.requires_openai_auth`, value: false, mergeStrategy: 'replace' },
+			{ keyPath: `model_providers.${provider.id}.base_url`, value: provider.baseUrl === '' ? null : provider.baseUrl, mergeStrategy: 'replace' },
+			{ keyPath: `model_providers.${provider.id}.env_key`, value: envKey === '' ? null : envKey, mergeStrategy: 'replace' },
+		);
+	}
+	return edits;
+}
 const CODEX_MODEL_SELECTION_PREFIX = '@provider=';
 
 export function toCodexModelSelectionId(modelProvider: string, modelId: string): string {
@@ -1149,6 +1211,15 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private _publishAccountInfo(account: ICodexAccountInfo): void {
+		getActiveForgeDiagnosticsLog()?.record('agent', 'ACCOUNT.STATUS', {
+			status: account.status,
+			email: account.email,
+			planType: account.planType,
+			requiresOpenaiAuth: account.requiresOpenaiAuth,
+			rateLimit: account.rateLimit,
+			hasAuthUrl: !!account.authUrl,
+			error: account.error,
+		});
 		this._configurationService.publishRootTransientValues?.({ [CODEX_ACCOUNT_META_KEY]: account });
 	}
 
@@ -1195,6 +1266,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			planType: state.authType === 'chatgpt' ? state.planType : undefined,
 			requiresOpenaiAuth: state.requiresOpenaiAuth,
 			rateLimit: state.authType === 'chatgpt' ? this._openAIAccountRateLimit : undefined,
+			error: state.status === 'error' ? state.error : undefined,
 		};
 	}
 
@@ -1402,6 +1474,9 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private _queueModelRefresh(): Promise<void> {
+		if (this._store.isDisposed) {
+			return Promise.resolve();
+		}
 		const refreshPromise = this._refreshModels().finally(() => {
 			if (this._modelsRefreshPromise === refreshPromise) {
 				this._modelsRefreshPromise = undefined;
@@ -1745,10 +1820,14 @@ export class CodexAgent extends Disposable implements IAgent {
 	 * remains present but unusable; no cached or synthetic model is advertised.
 	 */
 	private _startModelRefreshForExistingChatGPTSetup(): void {
-		if (!this._hasExistingChatGPTSetup() || this._codexModels.length > 0) {
+		if (this._store.isDisposed || !this._hasExistingChatGPTSetup() || this._codexModels.length > 0) {
 			return;
 		}
-		queueMicrotask(() => { void this.refreshModels(); });
+		queueMicrotask(() => {
+			if (!this._store.isDisposed) {
+				void this.refreshModels();
+			}
+		});
 	}
 
 	private async _refreshCopilotModels(): Promise<void> {
@@ -1805,37 +1884,6 @@ export class CodexAgent extends Disposable implements IAgent {
 
 	private async _refreshCodexModels(): Promise<void> {
 		try {
-			let liveById = new Map<string, ModelListResponse['data'][number]>();
-			if (this._connection.kind === 'idle' && !(await this._isSdkResolvableWithoutDownload()) && !this._hasExistingChatGPTSetup()) {
-				this._codexModels = this._pickerModelsFromCards(undefined, liveById);
-				return;
-			}
-			try {
-				const connection = await this._ensureConnection();
-				const account = await this._refreshAccount(connection.client, false);
-				if (account.status === 'signedIn' && account.authType === 'chatgpt') {
-					const data = [] as ModelListResponse['data'];
-					let cursor: string | null = null;
-					do {
-						const response: ModelListResponse = await connection.client.request<'model/list', ModelListResponse>('model/list', { cursor, limit: 100, includeHidden: false });
-						data.push(...response.data);
-						cursor = response.nextCursor;
-					} while (cursor !== null);
-					liveById = new Map(data.map(model => [model.model, model]));
-					this._syncOfficialCodexCard(data.sort((left, right) => Number(right.isDefault) - Number(left.isDefault)).map(model => model.model));
-				} else if (account.status === 'signedOut' || account.status === 'error') {
-					this._syncOfficialCodexCard([]);
-				}
-			} catch (error) {
-				this._logService.warn(`[Codex] official model list failed: ${error instanceof Error ? error.message : String(error)}`);
-			}
-
-			const fromCards = this._pickerModelsFromCards(undefined, liveById);
-			if (fromCards.length > 0) {
-				this._codexModels = fromCards;
-				return;
-			}
-
 			const configuredModels = normalizeCodexModelsConfig(this._configurationService.getRootConfigValues?.()[CODEX_MODELS_ROOT_CONFIG_KEY]);
 			const configuredProvider = configuredModels.providers.find(provider => provider.id === configuredModels.modelProvider);
 			const localKind = configuredProvider?.kind === 'ollama' || configuredProvider?.kind === 'lmstudio'
@@ -1843,6 +1891,11 @@ export class CodexAgent extends Disposable implements IAgent {
 				: configuredModels.modelProvider === 'ollama' || configuredModels.modelProvider === 'lmstudio'
 					? configuredModels.modelProvider
 					: undefined;
+
+			// Local providers are independent of the OpenAI account and app-server's
+			// remote model catalog. Resolve them first so an expired/signed-out
+			// ChatGPT session cannot make an otherwise usable Ollama/LM Studio model
+			// disappear from the picker (which also disables chat submission).
 			if (localKind) {
 				const baseUrl = configuredProvider?.baseUrl || (localKind === 'ollama' ? 'http://localhost:11434/v1' : 'http://localhost:1234/v1');
 				let discovered: readonly { id: string; name: string }[] = [];
@@ -1863,16 +1916,72 @@ export class CodexAgent extends Disposable implements IAgent {
 				}));
 				return;
 			}
+
+			let liveById = new Map<string, ModelListResponse['data'][number]>();
+			let liveModelProvider: string | undefined;
+			let chatGPTSubscription = false;
+			if (this._connection.kind === 'idle' && !(await this._isSdkResolvableWithoutDownload()) && !this._hasExistingChatGPTSetup()) {
+				this._codexModels = this._pickerModelsFromCards(undefined, liveById);
+				return;
+			}
+			try {
+				const connection = await this._ensureConnection();
+				const account = await this._refreshAccount(connection.client, false);
+				if ((account.status === 'signedOut' || account.status === 'error')
+					&& (configuredModels.modelProvider === '' || configuredModels.modelProvider === CODEX_OPENAI_MODEL_PROVIDER)) {
+					this._syncOfficialCodexCard([]);
+					this._codexModels = [];
+					return;
+				}
+				const configResponse = await connection.client.request<'config/read', ConfigReadResponse>('config/read', { includeLayers: false });
+				const config = configResponse.config && typeof configResponse.config === 'object' && !Array.isArray(configResponse.config)
+					? configResponse.config as Record<string, unknown>
+					: {};
+				const configuredLiveProvider = this._readConfigurationValue(config, 'model_provider');
+				liveModelProvider = typeof configuredLiveProvider === 'string' && configuredLiveProvider !== '' ? configuredLiveProvider : CODEX_OPENAI_MODEL_PROVIDER;
+				chatGPTSubscription = account.status === 'signedIn'
+					&& account.authType === 'chatgpt'
+					&& account.requiresOpenaiAuth !== false
+					&& liveModelProvider === CODEX_OPENAI_MODEL_PROVIDER;
+
+				const data = [] as ModelListResponse['data'];
+				let cursor: string | null = null;
+				do {
+					const response: ModelListResponse = await connection.client.request<'model/list', ModelListResponse>('model/list', { cursor, limit: 100, includeHidden: false });
+					data.push(...response.data);
+					cursor = response.nextCursor;
+				} while (cursor !== null);
+				liveById = new Map(data.map(model => [model.model, model]));
+				if (chatGPTSubscription) {
+					this._syncOfficialCodexCard(data.sort((left, right) => Number(right.isDefault) - Number(left.isDefault)).map(model => model.model));
+				} else {
+					this._syncOfficialCodexCard([]);
+				}
+			} catch (error) {
+				this._logService.warn(`[Codex] official model list failed: ${error instanceof Error ? error.message : String(error)}`);
+			}
+
+			if (chatGPTSubscription) {
+				const fromCards = this._pickerModelsFromCards(undefined, liveById);
+				if (fromCards.length > 0) {
+					this._codexModels = fromCards;
+					return;
+				}
+			}
 			if (liveById.size > 0) {
+				const modelProvider = liveModelProvider ?? CODEX_OPENAI_MODEL_PROVIDER;
 				this._codexModels = [...liveById.values()].map((model): IAgentModelInfo => ({
-					provider: 'chatgpt',
-					id: toCodexModelSelectionId(CODEX_OPENAI_MODEL_PROVIDER, model.model),
+					provider: chatGPTSubscription ? 'chatgpt' : modelProvider,
+					id: toCodexModelSelectionId(modelProvider, model.model),
 					name: model.displayName,
 					supportsVision: model.inputModalities.includes('image'),
 					configSchema: this._createReasoningEffortConfigSchema(model.supportedReasoningEfforts, model.defaultReasoningEffort, model.model),
-					_meta: createAgentModelSourceMeta(CHATGPT_SUBSCRIPTION_MODEL_SOURCE_ID),
+					_meta: createAgentModelSourceMeta(chatGPTSubscription ? CHATGPT_SUBSCRIPTION_MODEL_SOURCE_ID : undefined),
 				}));
+				return;
 			}
+
+			this._codexModels = [];
 		} catch (err) {
 			this._logService.warn(`[Codex] Failed to refresh OpenAI models: ${err instanceof Error ? err.message : String(err)}`);
 			// Keep the last known-good catalog; a transient periodic failure must
@@ -2079,24 +2188,36 @@ export class CodexAgent extends Disposable implements IAgent {
 		const args = [...launchConfig.args];
 
 		this._logService.info(`[Codex] spawning with additive model providers ${binaryPath} ${args.join(' ')}`);
+		const diagnosticsLog = getActiveForgeDiagnosticsLog();
+		diagnosticsLog?.record('protocol', 'CODEX.PROCESS.SPAWN', { binaryPath, args: launchConfig.args, codexHome });
 		const child = spawn(binaryPath, args, { env, stdio: ['pipe', 'pipe', 'pipe'] });
 
 		// Surface stderr to the log channel — codex writes useful startup
 		// diagnostics there. Mirror Claude's pattern.
 		child.stderr.setEncoding('utf8');
-		child.stderr.on('data', chunk => this._logService.info(`[Codex stderr] ${String(chunk).trimEnd()}`));
+		child.stderr.on('data', chunk => {
+			const text = String(chunk);
+			this._logService.info(`[Codex stderr] ${text.trimEnd()}`);
+			diagnosticsLog?.recordStream('protocol', 'codex-app-server:stderr', 'CODEX.STDERR', text);
+		});
 
 		const transport = transportFromChildProcess(child);
 		const client = new CodexAppServerClient(transport, (level, msg) => {
 			this._logService.info(`[CodexClient ${level}] ${msg}`);
+			diagnosticsLog?.record(level === 'error' ? 'errors' : 'protocol', `CODEX.CLIENT.${level.toUpperCase()}`, { message: msg });
+		}, undefined, (direction, message) => {
+			diagnosticsLog?.record('protocol', direction === 'client-to-server' ? 'CODEX.RPC.SEND' : 'CODEX.RPC.RECEIVE', summarizeCodexRpcMessage(message));
 		});
 
 		// Tear everything down if the child dies on its own.
 		client.onExit(e => {
+			diagnosticsLog?.flushStreams('codex-app-server:');
+			diagnosticsLog?.record('protocol', 'CODEX.PROCESS.EXIT', e);
 			this._logService.warn(`[Codex] app-server exited code=${e.code} signal=${e.signal}`);
 			this._handleConnectionLost();
 		});
 		client.onTransportError(err => {
+			diagnosticsLog?.record('errors', 'CODEX.TRANSPORT.ERROR', { message: err.message, stack: err.stack });
 			this._logService.error(`[Codex] transport error: ${err.message}`);
 			this._handleConnectionLost();
 		});
@@ -2949,31 +3070,10 @@ export class CodexAgent extends Disposable implements IAgent {
 			edits.push({ keyPath: 'model_provider', value: next.modelProvider === '' ? null : next.modelProvider, mergeStrategy: 'replace' });
 		}
 
-		// Drop providers that were removed from the list.
-		for (const provider of previous.providers) {
-			if (!next.providers.some(p => p.id === provider.id)) {
-				edits.push({ keyPath: `model_providers.${provider.id}`, value: null, mergeStrategy: 'replace' });
-			}
-		}
 
 		// Update only the fields managed by Forge. Writing each leaf preserves
 		// advanced provider options configured directly in config.toml.
-		for (const provider of next.providers) {
-			if (provider.official && provider.baseUrl.trim() === '') {
-				edits.push({ keyPath: `model_providers.${provider.id}`, value: null, mergeStrategy: 'replace' });
-				continue;
-			}
-			const envKey = provider.authMode === 'stored'
-				? codexProviderStoredApiKeyEnv(provider.id)
-				: provider.authMode === 'environment' ? provider.envKey : '';
-			edits.push(
-				{ keyPath: `model_providers.${provider.id}.name`, value: provider.name, mergeStrategy: 'replace' },
-				{ keyPath: `model_providers.${provider.id}.wire_api`, value: provider.wireApi, mergeStrategy: 'replace' },
-				{ keyPath: `model_providers.${provider.id}.requires_openai_auth`, value: false, mergeStrategy: 'replace' },
-				{ keyPath: `model_providers.${provider.id}.base_url`, value: provider.baseUrl === '' ? null : provider.baseUrl, mergeStrategy: 'replace' },
-				{ keyPath: `model_providers.${provider.id}.env_key`, value: envKey === '' ? null : envKey, mergeStrategy: 'replace' },
-			);
-		}
+		edits.push(...codexManagedModelProviderEdits(previous, next));
 
 		if (edits.length === 0) {
 			return;
@@ -3048,9 +3148,15 @@ export class CodexAgent extends Disposable implements IAgent {
 				this._forgeModelsReady = true;
 			} finally {
 				this._providerConfigurationRefresh = undefined;
-				if (this._pendingProviderConfigurationWrite && (this._providerConfigurationReady || this._forgeModelsReady)) {
+				if (this._pendingProviderConfigurationWrite && this._providerConfigurationReady) {
 					this._pendingProviderConfigurationWrite = false;
 					this._queueProviderConfigurationWrite();
+				} else if (this._pendingProviderConfigurationWrite && this._forgeModelsReady) {
+					// With no SDK yet, only the Forge-owned models file is writable.
+					// Re-entering _queueProviderConfigurationWrite here would immediately
+					// start another provider refresh and create a hot microtask loop.
+					this._pendingProviderConfigurationWrite = false;
+					this._persistForgeModelsFromRootConfig();
 				}
 			}
 		})();
@@ -3136,6 +3242,10 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private async _dispatchFileChangePatchUpdated(params: FileChangePatchUpdatedNotification): Promise<void> {
+		const diagnosticsLog = getActiveForgeDiagnosticsLog();
+		for (const change of params.changes) {
+			diagnosticsLog?.recordLatestText('files', `codex-patch:${params.threadId}:${params.turnId}:${params.itemId}:${change.path}`, 'FILE.PATCH', change.diff, { thread: params.threadId, turn: params.turnId, item: params.itemId, path: change.path, kind: change.kind });
+		}
 		const subagent = this._subagentsByThreadId.get(params.threadId);
 		const sessionId = this._sessionIdByThreadId.get(params.threadId);
 		const session = subagent?.session ?? (sessionId ? this._sessions.get(sessionId) : undefined);
@@ -3161,6 +3271,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private async _dispatchTurnDiffUpdated(params: TurnDiffUpdatedNotification): Promise<void> {
+		getActiveForgeDiagnosticsLog()?.recordLatestText('files', `codex-turn-diff:${params.threadId}:${params.turnId}`, 'UNIFIED-DIFF', params.diff, { thread: params.threadId, turn: params.turnId });
 		const subagent = this._subagentsByThreadId.get(params.threadId);
 		const sessionId = this._sessionIdByThreadId.get(params.threadId);
 		const session = subagent?.session ?? (sessionId ? this._sessions.get(sessionId) : undefined);

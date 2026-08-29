@@ -118,6 +118,8 @@ export interface ICodexAppServerTransport {
 	onExitOnce(listener: (e: { readonly code: number | null; readonly signal: NodeJS.Signals | null }) => void): void;
 }
 
+export type CodexRpcObserver = (direction: 'client-to-server' | 'server-to-client', message: unknown) => void;
+
 /**
  * Generic JSON-RPC client over a {@link ICodexAppServerTransport}.
  *
@@ -216,6 +218,7 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 		private readonly _transport: ICodexAppServerTransport,
 		private readonly _onLog?: (level: 'info' | 'warn' | 'error', message: string) => void,
 		private readonly _graceKillMs = GRACE_KILL_MS,
+		private readonly _observer?: CodexRpcObserver,
 	) {
 		super();
 		this._register(this._transport.onExit(e => this._handleExit(e)));
@@ -250,6 +253,11 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 	}
 
 	private _dispatch(msg: WireMessage): void {
+		try {
+			this._observer?.('server-to-client', msg);
+		} catch {
+			// Diagnostics are observational and must never disturb protocol dispatch.
+		}
 		const hasId = hasKey(msg, { id: true });
 		const hasMethod = hasKey(msg, { method: true });
 		// Response envelope (has id and either result or error, no method).
@@ -338,6 +346,11 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 			return false;
 		}
 		try {
+			try {
+				this._observer?.('client-to-server', message);
+			} catch {
+				// Diagnostics are observational and must never disturb protocol writes.
+			}
 			this._transport.stdin.write(JSON.stringify(message) + '\n');
 			return true;
 		} catch (err) {

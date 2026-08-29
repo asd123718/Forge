@@ -28,6 +28,7 @@ suite('Codex account metadata', () => {
 			rateLimit: { usedPercent: 42.4, windowDurationMins: 10080, resetsAt: 1234 },
 			authUrl: undefined,
 			authUrlNonce: undefined,
+			error: undefined,
 		});
 	});
 

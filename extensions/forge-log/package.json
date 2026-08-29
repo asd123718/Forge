@@ -1,0 +1,51 @@
+{
+  "name": "forge-log",
+  "displayName": "Forge Diagnostic Log",
+  "description": "Syntax highlighting for Forge application-owned diagnostic text logs.",
+  "version": "1.0.0",
+  "private": true,
+  "publisher": "forge",
+  "license": "MIT",
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "forge-log",
+        "aliases": [
+          "Forge Log"
+        ],
+        "filenames": [
+          "00-startup.txt",
+          "01-timeline.txt",
+          "10-ui.txt",
+          "20-chat.txt",
+          "30-agent.txt",
+          "40-tools.txt",
+          "50-files.txt",
+          "51-workbench-files.txt",
+          "60-terminal.txt",
+          "70-protocol.txt",
+          "90-errors.txt",
+          "90-ui-errors.txt",
+          "99-summary.txt"
+        ],
+        "filenamePatterns": [
+          "**/logs/*/*.forge-log.txt",
+          "**/logs/*/??-*.?.txt"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "forge-log",
+        "scopeName": "text.forge-log",
+        "path": "./syntaxes/forge-log.tmLanguage.json"
+      }
+    ]
+  }
+}

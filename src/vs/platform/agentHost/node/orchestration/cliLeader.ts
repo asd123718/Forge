@@ -43,9 +43,9 @@ export class CliLeaderProvider implements ILeaderProvider {
 			let streamed = '';
 			const text = await this._invoke(prompt, workspace, model, abort, chunk => {
 				streamed += chunk;
-				hooks?.onProgress?.({ thinking: streamed });
+				hooks?.onProgress?.({ progress: streamed });
 			});
-			hooks?.onProgress?.({ thinking: streamed || text, output: text });
+			hooks?.onProgress?.({ progress: streamed || text, output: text });
 			return text;
 		} catch {
 			return '';
@@ -88,7 +88,7 @@ export function createGrokLeader(
 			...resolved.prefixArgs,
 			'-p', prompt,
 			'--cwd', workspace,
-			'--yolo',
+			'--permission-mode', 'auto',
 			'--no-auto-update',
 			'--output-format', 'json',
 			'-m', model ?? 'grok-4.6',

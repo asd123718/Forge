@@ -56,13 +56,14 @@ src/                 # workbench, Agent Host, Codex bridge
 extensions/          # built-in extensions
 build/               # compile, package, Inno Setup
 resources/           # icons and installer artwork
+  └── forge-runtime/ # bundled console Node and Electron ABI native overlay
 test/                # unit / smoke tests
 scripts/             # dev launch and Forge helpers
-└── forge/           # launcher, Codex staging, upstream checks
+└── forge/           # Codex staging and upstream checks
 docs/                # architecture, orchestration, roadmap, packaging
 codex/               # upstream Codex runtime and app-server
-start-forge.cmd      # Windows entry point
-start-forge.exe      # launcher (prefers packaged Forge.exe)
+start-forge.bat      # source-only Windows entry point
+logs/                # one detailed timestamped directory per launch
 product.json         # product name, protocol, Windows setup ids
 ```
 
@@ -70,44 +71,20 @@ Seams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Orchestration: [docs/FORGE-
 
 ### Requirements
 
-Building from source needs:
+The prepared portable source tree includes its Node dependencies, console Node runtime, Electron runtime, native bindings, and Codex binary. Starting it needs:
 
 - Windows 10/11 x64
-- [Node.js](https://nodejs.org/) **24.18.x** (see `.nvmrc`)
-- Git
-- A full `vscode-win32-x64` release build plus the repo’s Inno Setup (`node_modules/innosetup`) to produce an installer
-
-Running a packaged `Forge.exe` does not require Node, Python, Visual Studio, or Rust on the machine.
+- the complete repository contents, including `node_modules`, `resources\forge-runtime`, and `.build\electron`
 
 ### Quick start
 
-If `.build\VSCode-win32-x64\Forge.exe` or `start-forge.exe` already exists:
-
 ```bat
-start-forge.cmd
+start-forge.bat
 ```
 
-You can also run `.build\VSCode-win32-x64\Forge.exe` directly.
+The BAT immediately hands off to a hidden source launcher, uses the bundled console Node runtime to compile the current source, restores the bundled Electron ABI bindings, and starts one development workbench. It neither installs dependencies nor builds a packaged application. Per-launch diagnostics are written under `logs\<detailed-local-time>\`.
 
-From source:
-
-```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
-```
-
-Pass extra launch args with `scripts\forge\dev.ps1`.
-
-After changing workbench or Agent Host code, rebuild the packaged app without a full `gulp vscode-win32-x64`:
-
-```bat
-powershell -ExecutionPolicy Bypass -File scripts\forge\rebuild-from-source.ps1
-```
-
-Fully quit Forge before restarting `start-forge.cmd`.
+A plain GitHub clone intentionally does not contain the ignored `node_modules/` and `.build/electron/` directories. For a no-install portable copy, transfer the complete prepared source directory (for example as an archive). The repository tracks `resources/forge-runtime/`, including the console Node executable (through Git LFS) and native ABI overlay.
 
 To use a binary built from local `codex/` instead of the package pinned by Code - OSS:
 
@@ -129,20 +106,6 @@ In installed builds, the Codex binary lives under `node_modules.asar.unpacked\@o
 
 For custom / compatible models the host registers a JSON tool named `write_file` (`path` + full `contents`). Do not name it `apply_patch`: a second tool with that name panics Codex if native `apply_patch` is already registered. Do not call `apply_patch.bat` through `shell_command` on Windows.
 
-### Windows installer
-
-```bat
-set BUILD_SOURCEVERSION=c125b2a2432ff78b2d1f7b8ed8b0c67cf3af6187
-set VSCODE_QUALITY=stable
-npm run gulp vscode-win32-x64
-npm run gulp vscode-win32-x64-inno-updater
-npm run gulp vscode-win32-x64-system-setup
-```
-
-Default installer: `.build\win32-x64\system-setup\VSCodeSetup.exe`. Release folder: `.build\VSCode-win32-x64` with `Forge.exe` and unpacked Codex natives. Unsigned installers may trigger SmartScreen.
-
-`.gitignore` excludes `node_modules/` and `.build/`. Copying the source tree to another machine is not a release; run `npm install` and build again.
-
 ### Data and logs
 
 | Path | Purpose |
@@ -151,13 +114,13 @@ Default installer: `.build\win32-x64\system-setup\VSCodeSetup.exe`. Release fold
 | `%USERPROFILE%\.forge\codex\forge-models.json` | Custom providers and models |
 | `%APPDATA%\Forge` | Workbench settings, secrets, chat sessions |
 | `%USERPROFILE%\.forge-ai` | argv.json, extensions, policy |
-| `%APPDATA%\Forge\logs\` | Workbench and Agent Host logs |
+| `<Forge repository>\logs\<detailed local timestamp>\` | Launcher, workbench, Agent Host, UI, tool, terminal, file and error logs for one run |
 
-Source-run (`scripts\code.bat`) uses the same folders as the installed app. Do not run both at once.
+The `logs` root contains timestamped session directories only. Duplicate-start protection uses an in-memory Windows named mutex, so no `.lock` file is created. Every event line uses 24-hour local time with milliseconds and UTC offset.
 
 If Codex does not start or sign-in does nothing:
 
-`%APPDATA%\Forge\logs\<date>\window1\exthost\agenthost\agenthost.log`
+`<Forge repository>\logs\<detailed timestamp>\agenthost.log`
 
 ### Architecture
 
@@ -228,33 +191,19 @@ Forge 是基于 [Code - OSS](https://github.com/microsoft/vscode) 的独立桌�
 ### 环境要求
 
 - Windows 10/11 x64
-- [Node.js](https://nodejs.org/) **24.18.x**（见 `.nvmrc`）
-- Git
-- 打安装包还需要完整的 `vscode-win32-x64` 发布构建和仓库自带的 Inno Setup
-
-日常运行已打包的 `Forge.exe` 不要求本机安装 Node、Python、Visual Studio 或 Rust。
+- 保留完整仓库，包括 `node_modules`、`resources\forge-runtime` 和 `.build\electron`
 
 ### 快速开始
 
-已有 `.build\VSCode-win32-x64\Forge.exe` 或 `start-forge.exe` 时运行 `start-forge.cmd`。从源码：
-
 ```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
+start-forge.bat
 ```
+
+BAT 会立即交给隐藏的源码启动器，使用项目内置的控制台 Node 编译当前源码，恢复内置 Electron ABI 原生绑定，然后只启动一个开发工作台；不安装依赖，不构建打包版。每次启动的日志写入 `logs\<详细本地时间>\`。
+
+GitHub 中的纯源码 clone 不包含被忽略的 `node_modules/` 和 `.build/electron/`。如果要在另一台电脑上免安装双击启动，应传输完整的已准备源码目录（例如整体压缩）。仓库会跟踪 `resources/forge-runtime/` 中的控制台 Node（通过 Git LFS）和原生 ABI 覆盖层。
 
 本地 Codex 源码二进制：`scripts\forge\stage-codex.ps1`。
-
-修改工作台或 Agent Host 源码后，可用增量脚本重建打包目录（不必每次完整 `gulp vscode-win32-x64`）：
-
-```bat
-powershell -ExecutionPolicy Bypass -File scripts\forge\rebuild-from-source.ps1
-```
-
-重建后请完全退出 Forge，再运行 `start-forge.cmd`。
 
 ### Codex 使用说明
 
@@ -266,18 +215,6 @@ powershell -ExecutionPolicy Bypass -File scripts\forge\rebuild-from-source.ps1
 
 自定义模型使用 JSON 工具 `write_file`（`path` + 完整 `contents`）。不要把该工具命名为 `apply_patch`，也不要通过 `shell_command` 调用 `apply_patch.bat`。
 
-### 打 Windows 安装包
-
-```bat
-set BUILD_SOURCEVERSION=c125b2a2432ff78b2d1f7b8ed8b0c67cf3af6187
-set VSCODE_QUALITY=stable
-npm run gulp vscode-win32-x64
-npm run gulp vscode-win32-x64-inno-updater
-npm run gulp vscode-win32-x64-system-setup
-```
-
-产物：`.build\win32-x64\system-setup\VSCodeSetup.exe`。未签名安装包可能出现 SmartScreen 提示。
-
 ### 数据与日志
 
 | 路径 | 用途 |
@@ -286,11 +223,11 @@ npm run gulp vscode-win32-x64-system-setup
 | `%USERPROFILE%\.forge\codex\forge-models.json` | 自定义提供商与模型 |
 | `%APPDATA%\Forge` | 工作台设置、密钥、聊天会话 |
 | `%USERPROFILE%\.forge-ai` | argv.json、扩展、策略 |
-| `%APPDATA%\Forge\logs\` | 工作台与 Agent Host 日志 |
+| `<Forge 仓库>\logs\<详细本地时间>\` | 单次运行的启动、工作台、Agent Host、UI、工具、终端、文件和错误日志 |
 
-从源码启动（`scripts\code.bat`）与安装版共用同一套目录。不要两边同时开。
+日志根目录只包含带时间的会话目录。重复启动防护使用 Windows 内存命名互斥量，不会生成 `.lock` 文件。每条事件使用 24 小时制本地时间、毫秒和 UTC 偏移。
 
-Codex 起不来时看：`%APPDATA%\Forge\logs\<日期>\window1\exthost\agenthost\agenthost.log`
+Codex 起不来时看：`<Forge 仓库>\logs\<详细时间>\agenthost.log`
 
 ---
 
@@ -332,14 +269,10 @@ Forge は [Code - OSS](https://github.com/microsoft/vscode) を土台にした�
 ### クイックスタート
 
 ```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
+start-forge.bat
 ```
 
-ビルド要件：Windows 10/11 x64、Node.js **24.18.x**、Git。インストーラ作成は `npm run gulp vscode-win32-x64` など（English 節と同じコマンド）。
+準備済みのポータブルソースツリーで実行してください。ログは `logs\<詳細なローカル時刻>\` に保存され、ルートにログやロックファイルは作成されません。
 
 ---
 
@@ -378,14 +311,10 @@ Forge는 [Code - OSS](https://github.com/microsoft/vscode) 기반의 독립 데�
 ### 빠른 시작
 
 ```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
+start-forge.bat
 ```
 
-요구 사항: Windows 10/11 x64, Node.js **24.18.x**, Git. 설치 패키지 명령은 English 절과 같습니다.
+준비된 포터블 소스 트리에서 실행합니다. 로그는 `logs\<자세한 로컬 시간>\`에 저장되며 루트에 로그나 잠금 파일을 만들지 않습니다.
 
 ---
 
@@ -424,14 +353,10 @@ Forge — отдельная настольная IDE на базе [Code - OSS]
 ### Быстрый старт
 
 ```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
+start-forge.bat
 ```
 
-Нужны Windows 10/11 x64, Node.js **24.18.x**, Git. Команды сборки установщика — в разделе English.
+Запускайте из подготовленного портативного дерева исходников. Журналы хранятся в `logs\<точное локальное время>\`; файлы журналов и блокировок в корне `logs` не создаются.
 
 ---
 
@@ -470,14 +395,10 @@ Au premier lancement, seuls `auth.json` et `config.toml` sont **copiés** depuis
 ### Démarrage rapide
 
 ```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
+start-forge.bat
 ```
 
-Prérequis : Windows 10/11 x64, Node.js **24.18.x**, Git. Commandes d’installeur : voir English.
+Exécutez-le depuis l’arborescence source portable préparée. Les journaux sont stockés dans `logs\<heure locale détaillée>\`; aucun journal ni verrou n’est créé à la racine de `logs`.
 
 ---
 
@@ -516,14 +437,10 @@ Beim ersten Start werden nur `auth.json` und `config.toml` aus `%USERPROFILE%\.c
 ### Schnellstart
 
 ```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
+start-forge.bat
 ```
 
-Voraussetzungen: Windows 10/11 x64, Node.js **24.18.x**, Git. Installer-Befehle stehen im Abschnitt English.
+Aus dem vorbereiteten portablen Quellbaum starten. Protokolle liegen unter `logs\<genaue lokale Zeit>\`; im Stamm von `logs` werden keine Protokoll- oder Sperrdateien erzeugt.
 
 ---
 
@@ -562,11 +479,7 @@ En el primer arranque solo se **copian** `auth.json` y `config.toml` desde `%USE
 ### Inicio rápido
 
 ```bat
-git clone https://github.com/asd123718/Forge.git
-cd Forge
-npm install
-npm run compile
-scripts\code.bat
+start-forge.bat
 ```
 
-Requisitos: Windows 10/11 x64, Node.js **24.18.x**, Git. Comandos del instalador: sección English.
+Ejecuta desde el árbol de fuentes portátil ya preparado. Los registros se guardan en `logs\<hora local detallada>\`; no se crean registros ni archivos de bloqueo en la raíz de `logs`.

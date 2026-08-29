@@ -105,6 +105,7 @@ import { AgentHostPullRequestOperationContribution } from './agentHostPullReques
 import { AgentHostSyncOperationContribution } from './agentHostSyncOperationProvider.js';
 import { AgentHostReviewService } from './agentHostReviewService.js';
 import { AgentHostCheckpointService } from './agentHostCheckpointService.js';
+import { ForgeDiagnosticsLog, setActiveForgeDiagnosticsLog } from './forgeDiagnosticsLog.js';
 
 /**
  * Grace period before an empty, unsubscribed session is garbage-collected
@@ -484,6 +485,8 @@ export class AgentService extends Disposable implements IAgentService {
 	 * Aggregated from all registered {@link IAgentHostCompletionItemProvider}s.
 	 */
 	get completionTriggerCharacters(): readonly string[] { return this._completions.triggerCharacters; }
+	private readonly _diagnosticsLog: ForgeDiagnosticsLog | undefined;
+	get diagnosticsLog(): ForgeDiagnosticsLog | undefined { return this._diagnosticsLog; }
 
 	constructor(
 		private readonly _logService: ILogService,
@@ -501,9 +504,12 @@ export class AgentService extends Disposable implements IAgentService {
 		storageResource?: URI,
 		orchestratorDatabase?: IAgentHostDatabase,
 		private readonly _now: () => number = Date.now,
+		logsHome?: URI,
 	) {
 		super();
 		this._logService.info('AgentService initialized');
+		const diagnosticsLog = this._diagnosticsLog = logsHome ? this._register(new ForgeDiagnosticsLog(logsHome)) : undefined;
+		setActiveForgeDiagnosticsLog(diagnosticsLog);
 		this._authService = new AgentHostAuthenticationService(_logService);
 		const databasePath = this._rootConfigResource
 			? joinPath(resourcesDirname(this._rootConfigResource), 'agent-host.db').fsPath
@@ -520,6 +526,27 @@ export class AgentService extends Disposable implements IAgentService {
 			},
 		}));
 		this._register(this._stateManager.onDidEmitEnvelope(e => this._onDidAction.fire(e)));
+		this._register(this._stateManager.onDidEmitEnvelope(e => {
+			if (!diagnosticsLog) {
+				return;
+			}
+			const action = e.action;
+			const protocolSummary: Record<string, unknown> = { channel: e.channel, type: action.type, serverSeq: e.serverSeq, origin: e.origin, rejectionReason: e.rejectionReason };
+			diagnosticsLog.record('protocol', 'AHP.ACTION', protocolSummary);
+			if (action.type === ActionType.TerminalData) {
+				diagnosticsLog.recordStream('terminal', `${e.channel}:output`, 'TERMINAL.STDOUT', action.data, { terminal: e.channel });
+			} else if (action.type === ActionType.TerminalInput) {
+				diagnosticsLog.recordText('terminal', 'TERMINAL.INPUT', action.data, { terminal: e.channel });
+			} else if (action.type === ActionType.TerminalCommandExecuted) {
+				diagnosticsLog.recordText('terminal', 'COMMAND', action.commandLine, { terminal: e.channel, commandId: action.commandId, timestamp: action.timestamp });
+			} else if (action.type === ActionType.TerminalCommandFinished) {
+				diagnosticsLog.flushStreams(`${e.channel}:output`);
+				diagnosticsLog.record('terminal', 'COMMAND.FINISHED', { commandId: action.commandId, exitCode: action.exitCode, durationMs: action.durationMs }, { terminal: e.channel });
+			} else if (action.type === ActionType.TerminalExited) {
+				diagnosticsLog.flushStreams(`${e.channel}:output`);
+				diagnosticsLog.record('terminal', 'TERMINAL.EXITED', { exitCode: action.exitCode }, { terminal: e.channel });
+			}
+		}));
 		this._register(this._stateManager.onDidEmitEnvelope(e => this._trackPendingSubagentChatFromEnvelope(e)));
 		this._register(this._stateManager.onDidEmitNotification(e => this._onDidNotification.fire(e)));
 
@@ -671,6 +698,7 @@ export class AgentService extends Disposable implements IAgentService {
 			getAgent: session => this._findProviderForSession(session),
 			sessionDataService: this._sessionDataService,
 			localTurns: this._localTurns,
+			diagnosticsLog,
 			agents: this._agents,
 			hostLaunchKind: this._hostLaunchKind,
 			copilotApiService: effectiveCopilotApiService,

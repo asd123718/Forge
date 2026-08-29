@@ -180,10 +180,12 @@ class ForgeCodexLiveEditContribution extends Disposable {
 
 	private _onOrchestrationChange(): void {
 		if (!this._isDialectic()) {
+			this._resetOrchestrationPreview();
 			return;
 		}
 		const run = this._run();
 		if (!run) {
+			this._resetOrchestrationPreview();
 			return;
 		}
 		if (this._runId !== run.runId) {
@@ -208,6 +210,20 @@ class ForgeCodexLiveEditContribution extends Disposable {
 				this._controller.finishContext(dialecticLiveEditContextKey(this._chatKey, run.runId, run.runId));
 			}
 		}
+	}
+
+	private _resetOrchestrationPreview(): void {
+		if (!this._runId && this._dirty.size === 0 && this._baselines.size === 0) {
+			return;
+		}
+		this._fileScheduler.cancel();
+		this._slots.reset();
+		this._baselines.clear();
+		this._dirty.clear();
+		this._playedTasks.clear();
+		this._focused = false;
+		this._runId = undefined;
+		this._controller.setContext(this._chatKey);
 	}
 
 	private _onWorkspaceFilesChange(event: FileChangesEvent): void {
@@ -235,6 +251,7 @@ class ForgeCodexLiveEditContribution extends Disposable {
 	}
 
 	private async _snapshotRunningTasks(run: IOrchestrationRunState): Promise<void> {
+		const runId = run.runId;
 		for (const task of run.tasks) {
 			if (task.status !== 'running' && task.status !== 'queued') {
 				continue;
@@ -245,7 +262,11 @@ class ForgeCodexLiveEditContribution extends Disposable {
 				if (this._baselines.has(key)) {
 					continue;
 				}
-				this._baselines.set(key, await this._readText(resource));
+				const baseline = await this._readText(resource);
+				if (!this._isCurrentRun(runId)) {
+					return;
+				}
+				this._baselines.set(key, baseline);
 			}
 		}
 	}
@@ -253,7 +274,7 @@ class ForgeCodexLiveEditContribution extends Disposable {
 	private async _flushDirtyFiles(): Promise<void> {
 		const run = this._run();
 		const chatKey = this._chatKey;
-		if (!run || !chatKey || this._dirty.size === 0) {
+		if (!run || !chatKey || !this._isDialectic() || this._dirty.size === 0) {
 			this._dirty.clear();
 			return;
 		}
@@ -264,6 +285,9 @@ class ForgeCodexLiveEditContribution extends Disposable {
 		for (const uriString of dirty) {
 			const resource = URI.parse(uriString);
 			const after = await this._readText(resource);
+			if (!this._isCurrentRun(run.runId)) {
+				return;
+			}
 			const before = this._baselines.get(uriString) ?? '';
 			if (after === before) {
 				continue;
@@ -304,6 +328,9 @@ class ForgeCodexLiveEditContribution extends Disposable {
 				const resource = resolveWorkspaceFile(run.workspace, file);
 				const key = resource.toString();
 				const after = await this._readText(resource);
+				if (!this._isCurrentRun(run.runId)) {
+					return;
+				}
 				const before = this._baselines.get(key) ?? '';
 				if (after === before) {
 					continue;
@@ -338,6 +365,10 @@ class ForgeCodexLiveEditContribution extends Disposable {
 
 	private _run(): IOrchestrationRunState | undefined {
 		return readOrchestrationState(rootValues(this._agentHostService));
+	}
+
+	private _isCurrentRun(runId: string): boolean {
+		return this._isDialectic() && this._runId === runId && this._run()?.runId === runId;
 	}
 
 	private _assignment() {

@@ -19,6 +19,7 @@ import { LocalChatSessionUri } from './model/chatUri.js';
 import { clearUserSelectedSessionType, getRememberedSessionType, storeUserSelectedSessionType } from './chatSessionTypePreference.js';
 import { isForgeAdvertisedSessionTypeId } from '../../../../platform/agentHost/common/forgeSessionTypes.js';
 import product from '../../../../platform/product/common/product.js';
+import { IAgentHostEnablementService } from '../../../../platform/agentHost/common/agentHostEnablementService.js';
 
 export { ChatAIDisabledSettingId } from '../../../../platform/chat/common/chatSettings.js';
 

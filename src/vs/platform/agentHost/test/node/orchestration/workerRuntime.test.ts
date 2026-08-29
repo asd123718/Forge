@@ -63,10 +63,29 @@ suite('Forge worker runtime', () => {
 	});
 
 	test('signed-in flags alone do not count as worker credentials', () => {
-		const env = { FORGE_DEEPSEEK_SIGNED_IN: '1', FORGE_GROK_SIGNED_IN: '1' } as NodeJS.ProcessEnv;
-		assert.strictEqual(hasDeepSeekWorkerCredentials(env), false);
-		assert.strictEqual(hasGrokWorkerCredentials(env), false);
-		assert.strictEqual(resolveDeepSeekCommand('/missing-root', env), undefined);
-		assert.strictEqual(resolveGrokCommand('/missing-root', env), undefined);
+		const home = mkdtempSync(join(tmpdir(), 'forge-worker-empty-'));
+		const previousForgeHome = process.env.FORGE_HOME;
+		const previousDshHome = process.env.DSH_HOME;
+		try {
+			process.env.FORGE_HOME = home;
+			delete process.env.DSH_HOME;
+			const env = { FORGE_DEEPSEEK_SIGNED_IN: '1', FORGE_GROK_SIGNED_IN: '1' } as NodeJS.ProcessEnv;
+			assert.strictEqual(hasDeepSeekWorkerCredentials(env), false);
+			assert.strictEqual(hasGrokWorkerCredentials(env), false);
+			assert.strictEqual(resolveDeepSeekCommand('/missing-root', env), undefined);
+			assert.strictEqual(resolveGrokCommand('/missing-root', env), undefined);
+		} finally {
+			if (previousForgeHome === undefined) {
+				delete process.env.FORGE_HOME;
+			} else {
+				process.env.FORGE_HOME = previousForgeHome;
+			}
+			if (previousDshHome === undefined) {
+				delete process.env.DSH_HOME;
+			} else {
+				process.env.DSH_HOME = previousDshHome;
+			}
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 });

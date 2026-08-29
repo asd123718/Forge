@@ -16,6 +16,7 @@ import { ITextModel } from '../../../../../../editor/common/model.js';
 import { IModelService } from '../../../../../../editor/common/services/model.js';
 import { ITextModelContentProvider, ITextModelService } from '../../../../../../editor/common/services/resolverService.js';
 import { localize } from '../../../../../../nls.js';
+import { IAccessibilityService } from '../../../../../../platform/accessibility/common/accessibility.js';
 import { IFileService } from '../../../../../../platform/files/common/files.js';
 import { ILogService } from '../../../../../../platform/log/common/log.js';
 import { IEditorIdentifier } from '../../../../../common/editor.js';
@@ -318,6 +319,7 @@ export class LiveEditPreviewController extends Disposable {
 		@IEditorGroupsService private readonly _editorGroupsService: IEditorGroupsService,
 		@IWorkbenchLayoutService private readonly _layoutService: IWorkbenchLayoutService,
 		@ILogService private readonly _logService: ILogService,
+		@IAccessibilityService private readonly _accessibilityService: IAccessibilityService,
 	) {
 		super();
 		this._contentProvider = new LiveEditPreviewContentProvider(modelService, languageService);
@@ -551,9 +553,9 @@ export class LiveEditPreviewController extends Disposable {
 		}
 
 		const { frames, firstChangedLine } = buildStreamingEditAnimation(currentContent, targetContent);
-		if (frames.length <= 1) {
+		if (frames.length <= 1 || this._accessibilityService.isMotionReduced() || this._accessibilityService.isScreenReaderOptimized()) {
 			this._contentProvider.set(active.previewUri, targetContent);
-			active.modifiedEditor.revealLineInCenter(firstChangedLine + 1, ScrollType.Smooth);
+			active.modifiedEditor.revealLineInCenter(firstChangedLine + 1, ScrollType.Immediate);
 			return;
 		}
 

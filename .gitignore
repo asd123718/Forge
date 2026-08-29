@@ -54,3 +54,6 @@ dist
 .v[0-9]*/
 # Local agent validation evidence
 .agent-validation/
+
+# Per-launch Forge diagnostics (created by start-forge.bat)
+/logs/

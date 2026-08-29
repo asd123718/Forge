@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { generateUuid } from '../../../../base/common/uuid.js';
+import { toCodexReasoningMeta } from '../../common/meta/codexReasoningMeta.js';
 import { localize } from '../../../../nls.js';
 import { toToolCallMeta } from '../../common/meta/agentToolCallMeta.js';
 import { ActionType, type SessionAction, type ChatAction } from '../../common/state/sessionActions.js';
@@ -488,7 +489,7 @@ export function mapReasoningSummaryTextDelta(
 	const ensured = ensureReasoningPart(state, params.turnId, reasoningKey(params.itemId, 'summary', params.summaryIndex));
 	return deferResponseWhileToolCallIsOpen(state, [
 		...ensured.actions,
-		{ type: ActionType.ChatReasoning, turnId: params.turnId, partId: ensured.partId, content: params.delta },
+		{ type: ActionType.ChatReasoning, turnId: params.turnId, partId: ensured.partId, content: params.delta, _meta: toCodexReasoningMeta('summary') },
 	]);
 }
 
@@ -499,7 +500,7 @@ export function mapReasoningTextDelta(
 	const ensured = ensureReasoningPart(state, params.turnId, reasoningKey(params.itemId, 'text', params.contentIndex));
 	return deferResponseWhileToolCallIsOpen(state, [
 		...ensured.actions,
-		{ type: ActionType.ChatReasoning, turnId: params.turnId, partId: ensured.partId, content: params.delta },
+		{ type: ActionType.ChatReasoning, turnId: params.turnId, partId: ensured.partId, content: params.delta, _meta: toCodexReasoningMeta('text') },
 	]);
 }
 

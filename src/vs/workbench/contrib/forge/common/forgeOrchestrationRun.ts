@@ -6,6 +6,8 @@
 import { URI } from '../../../../base/common/uri.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
+import { MarkdownString } from '../../../../base/common/htmlContent.js';
+import { localize } from '../../../../nls.js';
 import {
 	DEFAULT_ORCHESTRATION_ASSIGNMENT,
 	FORGE_ORCHESTRATION_ASSIGNMENT_KEY,
@@ -24,11 +26,23 @@ import type { IAgentHostService } from '../../../../platform/agentHost/common/ag
 import { ConfigurationTarget, type IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import type { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import type { IChatWidget } from '../../chat/browser/chat.js';
+import type { IChatProgress } from '../../chat/common/chatService/chatService.js';
+import type { ChatModel, ChatRequestModel, IChatModel } from '../../chat/common/model/chatModel.js';
 import { ChatRequestParser } from '../../chat/common/requestParser/chatRequestParser.js';
 import { toAgentHostBackendSessionUri } from '../../chat/browser/agentSessions/agentHost/agentHostSessionUri.js';
 import { assignmentWithDialecticProfiles, readForgeAgentSetup, type IForgeAgentSetup } from './forgeAgentSetup.js';
 
 export const FORGE_ORCHESTRATION_ASSIGNMENT_SETTING_ID = 'forge.orchestrationAssignment';
+
+type MutableChatModel = ChatModel & {
+	addRequest: ChatModel['addRequest'];
+	acceptResponseProgress: (request: ChatRequestModel, progress: IChatProgress, quiet?: boolean) => void;
+};
+
+function isMutableChatModel(model: IChatModel | undefined): model is MutableChatModel {
+	const candidate = model as Partial<MutableChatModel> | undefined;
+	return typeof candidate?.addRequest === 'function' && typeof candidate.acceptResponseProgress === 'function';
+}
 
 let dialecticOrchestrationPending = false;
 const _onDidChangeDialecticOrchestrationPending = new Emitter<void>();
@@ -174,14 +188,14 @@ export function canStartDialecticOrchestration(widget: IChatWidget): { ok: true 
 
 export function appendOrchestrationUserMessage(instantiationService: IInstantiationService, widget: IChatWidget, goal: string): boolean {
 	const model = widget.viewModel?.model;
-	if (!model) {
+	if (!model || !isMutableChatModel(model)) {
 		return false;
 	}
 	try {
 		const parser = instantiationService.createInstance(ChatRequestParser);
 		const request = model.addRequest(parser.parseChatRequest(model.sessionResource, goal), { variables: [] }, 0);
 		if (request.response && !request.response.isComplete) {
-			model.acceptResponseProgress(request, { kind: 'thinking', value: '编排已开始…', id: 'forge-orchestration-start' }, true);
+			model.acceptResponseProgress(request, { kind: 'markdownContent', content: new MarkdownString(localize('forge.orchestration.chatStarted', "编排已开始…")) }, true);
 		}
 		return true;
 	} catch {
@@ -190,7 +204,11 @@ export function appendOrchestrationUserMessage(instantiationService: IInstantiat
 }
 
 export function completeStaleChatRequest(widget: IChatWidget): void {
-	const request = widget.viewModel?.model.getRequests().at(-1);
+	const model = widget.viewModel?.model;
+	if (!model || !isMutableChatModel(model)) {
+		return;
+	}
+	const request = model.getRequests().at(-1) as ChatRequestModel | undefined;
 	if (request?.response && !request.response.isComplete) {
 		request.response.complete();
 	}
@@ -198,7 +216,7 @@ export function completeStaleChatRequest(widget: IChatWidget): void {
 
 export function cancelForgeOrchestration(agentHostService: IAgentHostService, runId?: string): void {
 	clearDialecticOrchestrationPending();
-	const run = readOrchestrationState(forgeRootConfigValues(agentHostService)[FORGE_ORCHESTRATION_STATE_KEY]);
+	const run = readOrchestrationState(forgeRootConfigValues(agentHostService));
 	if (!run || !isActiveOrchestrationStatus(run.status)) {
 		return;
 	}

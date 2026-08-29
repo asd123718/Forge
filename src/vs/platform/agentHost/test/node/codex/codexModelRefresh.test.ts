@@ -22,7 +22,7 @@ import { AgentHostStateManager } from '../../../node/agentHostStateManager.js';
 import { IAgentHostSessionTitleSignal } from '../../../node/agentHostSessionTitleSignal.js';
 import { IAgentSdkDownloader } from '../../../node/agentSdkDownloader.js';
 import { IAgentHostCheckpointService, NULL_CHECKPOINT_SERVICE } from '../../../common/agentHostCheckpointService.js';
-import { CodexAgent, toCodexModelSelectionId } from '../../../node/codex/codexAgent.js';
+import { CodexAgent, codexManagedModelProviderEdits, isCodexNonOverridableBuiltInProvider, toCodexModelSelectionId } from '../../../node/codex/codexAgent.js';
 import { ICodexProxyService } from '../../../node/codex/codexProxyService.js';
 import { ICopilotApiService } from '../../../node/shared/copilotApiService.js';
 import { ISessionDataService } from '../../../common/sessionDataService.js';
@@ -30,8 +30,9 @@ import { createTestGitHubEndpointService } from '../testGitHubEndpointService.js
 import { AgentHostCodexMultiRootEnabledConfigKey } from '../../../common/agentHostSchema.js';
 import { IAgentHostOTelService } from '../../../common/otel/agentHostOTelService.js';
 import { AgentHostConfigKey } from '../../../common/agentHostCustomizationConfig.js';
+import { CODEX_MODELS_ROOT_CONFIG_KEY, normalizeCodexModelsConfig } from '../../../common/codexModelsConfig.js';
 
-function createAgent(disposables: Pick<DisposableStore, 'add'>, models: () => Promise<CCAModel[]>, rootConfig: Record<string, boolean> = {}, userHome = '/tmp'): CodexAgent {
+function createAgent(disposables: Pick<DisposableStore, 'add'>, models: () => Promise<CCAModel[]>, rootConfig: Record<string, unknown> = {}, userHome = '/tmp'): CodexAgent {
 	const instantiationService = new TestInstantiationService();
 	const logService = new NullLogService();
 	const stateManager = disposables.add(new AgentHostStateManager(logService));
@@ -473,6 +474,87 @@ suite('CodexAgent model refresh', () => {
 		await agent['_refreshCodexModels']();
 
 		assert.deepStrictEqual(agent['_codexModels'], []);
+	});
+
+	test('keeps a configured Ollama model available while ChatGPT is signed out', async () => {
+		const agent = createAgent(disposables, async () => [], {
+			[CODEX_MODELS_ROOT_CONFIG_KEY]: {
+				model: 'qwen3.5:9b-q4_k_m',
+				modelProvider: 'ollama',
+				providers: [{
+					id: 'ollama',
+					catalogId: 'ollama',
+					name: 'Ollama',
+					baseUrl: 'http://localhost:11434/v1',
+					envKey: '',
+					kind: 'ollama',
+					authMode: 'none',
+					wireApi: 'responses',
+					enabled: true,
+					models: [{ name: 'qwen3.5:9b-q4_k_m', enabled: true }],
+					selectedModel: 'qwen3.5:9b-q4_k_m',
+				}],
+			},
+		});
+		agent['_discoverLocalModels'] = async () => [{ id: 'qwen3.5:9b-q4_k_m', name: 'Qwen 3.5 9B' }];
+		let appServerRequests = 0;
+		agent['_connection'] = {
+			kind: 'ready',
+			client: { request: async () => { appServerRequests++; throw new Error('local refresh must not depend on account/read'); } },
+			proxyHandle: { dispose() { } },
+			child: { kill: () => true },
+		} as never;
+
+		await agent['_refreshCodexModels']();
+
+		assert.deepStrictEqual({
+			appServerRequests,
+			models: agent['_codexModels'].map(model => ({ provider: model.provider, id: model.id, name: model.name })),
+		}, {
+			appServerRequests: 0,
+			models: [{
+				provider: 'ollama',
+				id: toCodexModelSelectionId('ollama', 'qwen3.5:9b-q4_k_m'),
+				name: 'Qwen 3.5 9B',
+			}],
+		});
+	});
+
+	test('does not write non-overridable built-in providers as custom model_providers', () => {
+		assert.deepStrictEqual({
+			openai: isCodexNonOverridableBuiltInProvider('openai'),
+			ollama: isCodexNonOverridableBuiltInProvider('OLLAMA'),
+			lmstudio: isCodexNonOverridableBuiltInProvider('lmstudio'),
+			custom: isCodexNonOverridableBuiltInProvider('openai-custom'),
+		}, {
+			openai: true,
+			ollama: true,
+			lmstudio: true,
+			custom: false,
+		});
+	});
+
+	test('syncs an Ollama selection without writing a reserved model_providers.ollama table', () => {
+		const previous = normalizeCodexModelsConfig({ model: '', modelProvider: '', providers: [] });
+		const next = normalizeCodexModelsConfig({
+				model: 'qwen3.5:9b-q4_k_m',
+				modelProvider: 'ollama',
+				providers: [{
+					id: 'ollama',
+					catalogId: 'ollama',
+					name: 'Ollama',
+					baseUrl: 'http://localhost:11434/v1',
+					envKey: '',
+					kind: 'ollama',
+					authMode: 'none',
+					wireApi: 'responses',
+					enabled: true,
+					models: [{ name: 'qwen3.5:9b-q4_k_m', enabled: true }],
+					selectedModel: 'qwen3.5:9b-q4_k_m',
+				}],
+		});
+
+		assert.deepStrictEqual(codexManagedModelProviderEdits(previous, next), []);
 	});
 
 	test('keeps configured non-human providers out of the ChatGPT group', async () => {

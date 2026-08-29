@@ -40,7 +40,7 @@ import { IAgentHostGitHubEndpointService } from '../../../node/agentHostGitHubEn
 import { IAgentSdkDownloader } from '../../../node/agentSdkDownloader.js';
 import { IAgentHostCheckpointService, NULL_CHECKPOINT_SERVICE } from '../../../common/agentHostCheckpointService.js';
 import { IAgentHostOTelService } from '../../../common/otel/agentHostOTelService.js';
-import { CodexAgent, toCodexModelSelectionId } from '../../../node/codex/codexAgent.js';
+import { CodexAgent, FORGE_LIVE_EDIT_INSTRUCTIONS, toCodexModelSelectionId } from '../../../node/codex/codexAgent.js';
 import { CodexAppServerClient, type ICodexAppServerTransport } from '../../../node/codex/codexAppServerClient.js';
 import { ICodexProxyService } from '../../../node/codex/codexProxyService.js';
 import { ICopilotApiService } from '../../../node/shared/copilotApiService.js';
@@ -882,7 +882,7 @@ suite('CodexAgent prewarm eviction', () => {
 			mcp: { local: { command: 'node', args: ['server.js'] } },
 			agentDescription: 'Reviews changes',
 			developerInstructions: 'Run focused tests.\n\nReview carefully.',
-			turnDeveloperInstructions: 'Run focused tests.\n\nReview carefully.',
+			turnDeveloperInstructions: `Run focused tests.\n\nReview carefully.\n\n${FORGE_LIVE_EDIT_INSTRUCTIONS}`,
 			capabilityPaths: [URI.file('/plugin/skills').fsPath],
 			roleFile: 'name = "Reviewer"\ndescription = "Reviews changes"\ndeveloper_instructions = "Review carefully."\n',
 			roleFileUsesHostGeneratedRoot: true,
@@ -942,10 +942,10 @@ suite('CodexAgent prewarm eviction', () => {
 			needsResume: agent['_sessions'].get(AgentSession.id(session))?.needsResume,
 		}, {
 			start: { method: 'thread/start', developerInstructions: 'Use the original instructions.' },
-			firstTurn: { method: 'turn/start', developerInstructions: 'Use the original instructions.' },
+			firstTurn: { method: 'turn/start', developerInstructions: `Use the original instructions.\n\n${FORGE_LIVE_EDIT_INSTRUCTIONS}` },
 			unsubscribe: { method: 'thread/unsubscribe', threadId: 'thread-workspace-agent' },
 			resume: { method: 'thread/resume', developerInstructions: 'Use the updated instructions.' },
-			secondTurn: { method: 'turn/start', developerInstructions: 'Use the updated instructions.' },
+			secondTurn: { method: 'turn/start', developerInstructions: `Use the updated instructions.\n\n${FORGE_LIVE_EDIT_INSTRUCTIONS}` },
 			resumedRoleFile: 'name = "Reviewer"\ndescription = "Reviews changes"\ndeveloper_instructions = "Use the updated instructions."\n',
 			needsResume: false,
 		});
@@ -1187,7 +1187,7 @@ suite('CodexAgent prewarm eviction', () => {
 					sandboxPolicy: {
 						type: 'workspaceWrite',
 						writableRoots: [repoA.fsPath, repoB.fsPath, additionalDirectory],
-						networkAccess: false,
+						networkAccess: true,
 						excludeTmpdirEnvVar: false,
 						excludeSlashTmp: false,
 					},
@@ -1392,7 +1392,7 @@ suite('CodexAgent prewarm eviction', () => {
 					sandboxPolicy: {
 						type: 'workspaceWrite',
 						writableRoots: [repo.fsPath, additionalDirectory],
-						networkAccess: false,
+						networkAccess: true,
 						excludeTmpdirEnvVar: false,
 						excludeSlashTmp: false,
 					},

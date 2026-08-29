@@ -4,12 +4,18 @@
  *--------------------------------------------------------------------------------------------*/
 
 .monaco-editor .forge-live-edit-faded-line {
-	background-color: rgba(255, 255, 0, 0.1);
-	opacity: 0.4;
+	background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(127, 127, 0, 0.12));
+	opacity: 0.45;
 }
 
 .monaco-editor .forge-live-edit-active-line {
-	background-color: rgba(255, 255, 0, 0.3);
+	background-color: var(--vscode-editor-findMatchBackground, rgba(127, 127, 0, 0.3));
 	opacity: 1;
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 0, 0.5);
+	box-shadow: inset 2px 0 0 var(--vscode-editor-findMatchBorder, var(--vscode-focusBorder));
+}
+
+.hc-black .monaco-editor .forge-live-edit-active-line,
+.hc-light .monaco-editor .forge-live-edit-active-line {
+	outline: 1px solid var(--vscode-contrastActiveBorder);
+	outline-offset: -1px;
 }

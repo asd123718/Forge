@@ -7,7 +7,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 80px;
+	width: 74px;
 	padding: 0 4px;
 }
 
@@ -70,6 +70,11 @@
 	border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
 	border-radius: var(--vscode-cornerRadius-large);
 	background: var(--vscode-sideBar-background);
+	transition: border-color 120ms ease-out, background-color 120ms ease-out;
+}
+
+.forge-account-card:hover {
+	border-color: var(--vscode-focusBorder, var(--vscode-widget-border));
 }
 
 .forge-account-card-header {
@@ -101,6 +106,17 @@
 .forge-account-plan,
 .forge-account-quota-detail {
 	color: var(--vscode-descriptionForeground);
+}
+
+.forge-account-card-heading {
+	min-width: 0;
+}
+
+.forge-account-card-heading span {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .forge-account-plan {
@@ -183,6 +199,12 @@
 	font: inherit;
 }
 
+.forge-account-api-input:focus-visible,
+.forge-account-auth-url:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
 .forge-account-api-form .monaco-button {
 	width: auto;
 	align-self: flex-start;
@@ -207,4 +229,47 @@
 	background: var(--vscode-input-background);
 	color: var(--vscode-input-foreground);
 	font: inherit;
+}
+
+@media (max-width: 600px) {
+	.forge-account-page {
+		padding: 24px 16px 32px;
+	}
+
+	.forge-account-header {
+		margin-bottom: 20px;
+	}
+
+	.forge-account-card {
+		padding: 16px;
+	}
+
+	.forge-account-card-header {
+		align-items: flex-start;
+	}
+
+	.forge-account-card-actions {
+		flex-direction: column;
+	}
+
+	.forge-account-card-actions .monaco-button,
+	.forge-account-api-form .monaco-button {
+		width: 100%;
+	}
+
+	.forge-account-quota-heading {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 4px;
+	}
+}
+
+.monaco-workbench.monaco-reduce-motion .forge-account-card {
+	transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.forge-account-card {
+		transition: none;
+	}
 }

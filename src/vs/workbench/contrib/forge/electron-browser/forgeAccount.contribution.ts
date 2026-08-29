@@ -340,12 +340,16 @@ class ForgeAccountActionViewItem extends ActionViewItem {
 		this.label.textContent = '';
 		this.label.classList.add('forge-account-avatars');
 		const github = append(this.label, $('span.forge-account-avatar.github'));
+		github.setAttribute('aria-hidden', 'true');
 		github.classList.add(...ThemeIcon.asClassNameArray(Codicon.github));
 		const codex = append(this.label, $('span.forge-account-avatar.codex'));
+		codex.setAttribute('aria-hidden', 'true');
 		codex.classList.add(...ThemeIcon.asClassNameArray(Codicon.openai));
 		const grok = append(this.label, $('span.forge-account-avatar.grok'));
+		grok.setAttribute('aria-hidden', 'true');
 		grok.classList.add(...ThemeIcon.asClassNameArray(Codicon.rocket));
 		const deepseek = append(this.label, $('span.forge-account-avatar.deepseek'));
+		deepseek.setAttribute('aria-hidden', 'true');
 		deepseek.classList.add(...ThemeIcon.asClassNameArray(Codicon.beaker));
 	}
 }
@@ -364,7 +368,9 @@ class ForgeAccountToolbarContribution extends Disposable {
 		@IAgentHostService agentHostService: IAgentHostService,
 	) {
 		super();
-		void hydrateVendorAccountSecrets(secretStorageService, agentHostService);
+		const hydrateSecrets = () => void hydrateVendorAccountSecrets(secretStorageService, agentHostService);
+		hydrateSecrets();
+		this._register(agentHostService.onAgentHostStart(hydrateSecrets));
 		this._register(actionViewItemService.register(
 			MenuId.ChatViewSessionTitleToolbar,
 			FORGE_ACCOUNT_ACTION_ID,
@@ -386,6 +392,7 @@ class ForgeAccountWidget extends Disposable implements IAICustomizationManagemen
 	private _showDeepSeekApiForm = false;
 	private _grokApiKeyDraft = '';
 	private _deepSeekApiKeyDraft = '';
+	private readonly _submittingApiKeys = new Set<ForgeVendorAccountKind>();
 
 	constructor(
 		private readonly _container: HTMLElement,
@@ -517,7 +524,7 @@ class ForgeAccountWidget extends Disposable implements IAICustomizationManagemen
 			this._render();
 		}, true);
 		if (this._showGrokApiForm) {
-			this._renderApiKeyForm(card.body, this._grokApiKeyDraft, value => { this._grokApiKeyDraft = value; }, () => this._submitVendorApiKey('grok', this._grokApiKeyDraft, this._grokAccountService));
+			this._renderApiKeyForm(card.body, 'grok', this._grokApiKeyDraft, value => { this._grokApiKeyDraft = value; }, () => this._submitVendorApiKey('grok', this._grokApiKeyDraft, this._grokAccountService));
 		}
 	}
 
@@ -540,32 +547,43 @@ class ForgeAccountWidget extends Disposable implements IAICustomizationManagemen
 			});
 			return;
 		}
-		this._renderApiKeyForm(card.body, this._deepSeekApiKeyDraft, value => { this._deepSeekApiKeyDraft = value; }, () => this._submitVendorApiKey('deepseek', this._deepSeekApiKeyDraft, this._deepSeekAccountService));
+		this._renderApiKeyForm(card.body, 'deepseek', this._deepSeekApiKeyDraft, value => { this._deepSeekApiKeyDraft = value; }, () => this._submitVendorApiKey('deepseek', this._deepSeekApiKeyDraft, this._deepSeekAccountService));
 	}
 
-	private _renderApiKeyForm(parent: HTMLElement, value: string, onChange: (value: string) => void, onSubmit: () => Promise<void>): void {
+	private _renderApiKeyForm(parent: HTMLElement, kind: ForgeVendorAccountKind, value: string, onChange: (value: string) => void, onSubmit: () => Promise<void>): void {
 		const form = append(parent, $('div.forge-account-api-form'));
 		const input = append(form, $('input.forge-account-api-input')) as HTMLInputElement;
+		const submitting = this._submittingApiKeys.has(kind);
 		input.type = 'password';
 		input.value = value;
+		input.disabled = submitting;
 		input.placeholder = localize('forge.account.apiKeyPlaceholder', "API key");
 		input.ariaLabel = localize('forge.account.apiKeyPlaceholder', "API key");
 		this._renderDisposables.add(addDisposableListener(input, 'input', () => onChange(input.value)));
 		this._renderDisposables.add(addDisposableListener(input, 'keydown', event => {
-			if (event.key === 'Enter') {
+			if (event.key === 'Enter' && !submitting) {
+				event.preventDefault();
 				void onSubmit();
 			}
 		}));
-		this._addButton(form, localize('forge.account.confirmApiKey', "确认登录"), () => onSubmit());
-		queueMicrotask(() => input.focus());
+		const button = this._addButton(form, submitting ? localize('forge.account.signingIn', "正在登录…") : localize('forge.account.confirmApiKey', "确认登录"), () => onSubmit());
+		button.enabled = !submitting;
+		if (!submitting) {
+			queueMicrotask(() => input.focus());
+		}
 	}
 
 	private async _submitVendorApiKey(kind: ForgeVendorAccountKind, apiKey: string, service: IForgeVendorAccountService): Promise<void> {
+		if (this._submittingApiKeys.has(kind)) {
+			return;
+		}
 		const trimmed = apiKey.trim();
 		if (!trimmed) {
 			this._notificationService.error(localize('forge.account.apiKeyRequired', "请先填写 API 密钥。"));
 			return;
 		}
+		this._submittingApiKeys.add(kind);
+		this._render();
 		try {
 			await storeVendorAccountApiKey(this._secretStorageService, this._agentHostService, kind, trimmed);
 			if (kind === 'grok') {
@@ -578,6 +596,9 @@ class ForgeAccountWidget extends Disposable implements IAICustomizationManagemen
 			service.signIn();
 		} catch (error) {
 			this._notificationService.error(error instanceof Error ? error.message : String(error));
+		} finally {
+			this._submittingApiKeys.delete(kind);
+			this._render();
 		}
 	}
 
@@ -601,6 +622,11 @@ class ForgeAccountWidget extends Disposable implements IAICustomizationManagemen
 		append(heading, $('strong')).textContent = quota.value;
 		if (quota.percent !== undefined) {
 			const track = append(row, $('div.forge-account-quota-track'));
+			track.setAttribute('role', 'progressbar');
+			track.setAttribute('aria-label', localize('forge.account.quotaProgress', "{0} 剩余", label));
+			track.setAttribute('aria-valuemin', '0');
+			track.setAttribute('aria-valuemax', '100');
+			track.setAttribute('aria-valuenow', String(Math.round(clampPercent(quota.percent))));
 			const remaining = append(track, $('div.forge-account-quota-remaining'));
 			remaining.style.width = `${clampPercent(quota.percent)}%`;
 		}

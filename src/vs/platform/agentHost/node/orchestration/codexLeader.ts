@@ -12,8 +12,8 @@ import { leaderImplementPrompt, leaderPlanPrompt, leaderReviewPrompt } from '../
 import type { ILeaderPlanContext, ILeaderProvider, IOrchestrationPlan, IOrchestrationProgressHooks, IOrchestrationRunState, IOrchestrationTaskState, IWorkerAvailability, IWorkerProvider, IWorkerRunRequest, IWorkerTaskResult } from '../../common/orchestration/orchestrationTypes.js';
 import { CODEX_LEADER_PROVIDER_ID } from '../../common/orchestration/orchestrationTypes.js';
 import { fallbackOrchestrationPlan, parseOrchestrationPlan } from '../../common/orchestration/taskGraph.js';
-import { AHP_CHAT_SCHEME, buildDefaultChatUri, parseChatUri, ResponsePartKind, type Turn } from '../../common/state/sessionState.js';
-import { IAgentHostStateManager } from '../agentHostStateManager.js';
+import { buildDefaultChatUri, parseChatUri, ResponsePartKind, type Turn } from '../../common/state/sessionState.js';
+import type { AgentHostStateManager } from '../agentHostStateManager.js';
 import { workerPrompt } from './workerAdapters.js';
 
 export class LocalLeaderProvider implements ILeaderProvider {
@@ -22,22 +22,22 @@ export class LocalLeaderProvider implements ILeaderProvider {
 
 	async plan(context: ILeaderPlanContext, _abort: AbortSignal): Promise<IOrchestrationPlan> {
 		const plan = fallbackOrchestrationPlan(context.goal, context.workers.map(worker => worker.providerId));
-		context.hooks?.onProgress?.({ thinking: 'Using local fallback planner.', output: plan.summary });
+		context.hooks?.onProgress?.({ progress: 'Using local fallback planner.', output: plan.summary });
 		return plan;
 	}
 
 	async review(run: IOrchestrationRunState, _abort: AbortSignal, hooks?: IOrchestrationProgressHooks): Promise<string> {
-		const failed = run.tasks.filter(task => task.status === 'failed' || task.status === 'escalated');
+		const failed = run.tasks.filter(task => task.status === 'failed' || task.status === 'cancelled');
 		const review = failed.length === 0
 			? 'Workers finished. Review the native Diff / Changes view, then keep or revert the patch.'
 			: `Workers finished with ${failed.length} failed task(s): ${failed.map(task => task.title).join(', ')}. Retry or escalate those tasks.`;
-		hooks?.onProgress?.({ thinking: review, output: review });
+		hooks?.onProgress?.({ progress: review, output: review });
 		return review;
 	}
 
 	async implement(task: IOrchestrationTaskState, _workspace: string, _contract: string, _abort: AbortSignal, _run?: IOrchestrationRunState, hooks?: IOrchestrationProgressHooks): Promise<IWorkerTaskResult> {
 		const error = `No high-intelligence leader is available to escalate "${task.title}".`;
-		hooks?.onProgress?.({ thinking: error, output: error });
+		hooks?.onProgress?.({ progress: error, output: error });
 		return {
 			status: 'failed',
 			summary: '',
@@ -54,7 +54,7 @@ export class CodexLeaderProvider implements ILeaderProvider {
 
 	constructor(
 		private readonly _getAgent: () => IAgent | undefined,
-		private readonly _stateManager: IAgentHostStateManager,
+		private readonly _stateManager: AgentHostStateManager,
 		private readonly _fallback: ILeaderProvider,
 		@ILogService private readonly _logService: ILogService,
 	) { }
@@ -102,7 +102,7 @@ export class CodexWorkerProvider implements IWorkerProvider {
 
 	constructor(
 		private readonly _getAgent: () => IAgent | undefined,
-		private readonly _stateManager: IAgentHostStateManager,
+		private readonly _stateManager: AgentHostStateManager,
 		@ILogService private readonly _logService: ILogService,
 	) { }
 
@@ -145,7 +145,7 @@ interface ICodexTurnContent {
 
 async function askCodex(
 	getAgent: () => IAgent | undefined,
-	stateManager: IAgentHostStateManager,
+	stateManager: AgentHostStateManager,
 	logService: ILogService,
 	chatUri: string,
 	workspace: string,
@@ -157,8 +157,8 @@ async function askCodex(
 	const agent = getAgent();
 	if (!agent) {
 		const message = 'Codex agent is not available.';
-		hooks?.onProgress?.({ thinking: message, output: '' });
-		return { thinking: message, output: '' };
+		hooks?.onProgress?.({ progress: message, output: '' });
+		return { thinking: '', output: '' };
 	}
 	const { chat, session } = resolveLeaderAddresses(chatUri, sessionUri);
 	try {
@@ -183,9 +183,9 @@ async function askCodex(
 				lastContent = content;
 				hooks?.onProgress?.(content);
 			}
-			if (!stateManager.getActiveTurnId(chat)) {
+			if (!stateManager.getActiveTurnId(chat.toString())) {
 				await timeout(350);
-				if (!stateManager.getActiveTurnId(chat)) {
+				if (!stateManager.getActiveTurnId(chat.toString())) {
 					return lastTurnContent(await agent.chats.getMessages(chat, session));
 				}
 			}
@@ -195,8 +195,8 @@ async function askCodex(
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		logService.warn(`[ForgeOrchestration] Codex turn failed: ${message}`);
-		hooks?.onProgress?.({ thinking: message, output: '' });
-		return { thinking: message, output: '' };
+		hooks?.onProgress?.({ progress: message, output: '' });
+		return { thinking: '', output: '' };
 	}
 }
 

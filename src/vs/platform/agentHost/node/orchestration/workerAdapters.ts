@@ -228,7 +228,7 @@ export class DeepSeekHarnessWorker implements IWorkerProvider {
 		let streamed = '';
 		const onChunk = (chunk: string) => {
 			streamed += chunk;
-			request.hooks?.onProgress?.({ thinking: streamed });
+			request.hooks?.onProgress?.({ progress: streamed });
 		};
 		try {
 			const result = await this._runner(resolved.command, [...resolved.args, workerPrompt(request)], {
@@ -289,14 +289,14 @@ export class GrokBuildWorker implements IWorkerProvider {
 		let streamed = '';
 		const onChunk = (chunk: string) => {
 			streamed += chunk;
-			request.hooks?.onProgress?.({ thinking: streamed });
+			request.hooks?.onProgress?.({ progress: streamed });
 		};
 		try {
 			const result = await this._runner(resolved.command, [
 				...resolved.prefixArgs,
 				'-p', workerPrompt(request),
 				'--cwd', request.workspace,
-				'--yolo',
+				'--permission-mode', 'auto',
 				'--no-auto-update',
 				'--output-format', 'json',
 				'-m', request.task.workerModel ?? this._model,

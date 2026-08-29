@@ -189,6 +189,7 @@ import './contrib/chat/electron-browser/chat.contribution.js';
 import './contrib/chat/electron-browser/tunnelHost.contribution.js';
 
 // Forge
+import './contrib/forge/electron-browser/forgeDiagnostics.contribution.js';
 import './contrib/forge/electron-browser/forgeStartup.contribution.js';
 import './contrib/forge/electron-browser/forgeCodexLiveEdit.contribution.js';
 import './contrib/forge/electron-browser/forgeAccount.contribution.js';
